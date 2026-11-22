@@ -146,10 +146,18 @@ def shared(client: TestClient, g: Gym, session: str, **body: Any) -> Any:
     return created(share(client, g, session, **body))
 
 
-def mine_rows(client: TestClient, g: Gym, person: str | uuid.UUID) -> list[Any]:
-    response = client.get("/api/me/material", headers=as_gym(g.id, uuid.UUID(str(person))))
+def mine_page(client: TestClient, g: Gym, person: str | uuid.UUID, **params: Any) -> Any:
+    response = client.get(
+        "/api/me/material", params=params, headers=as_gym(g.id, uuid.UUID(str(person)))
+    )
     assert response.status_code == 200, response.text
-    rows: list[Any] = response.json()
+    return response.json()
+
+
+def mine_rows(client: TestClient, g: Gym, person: str | uuid.UUID) -> list[Any]:
+    page = mine_page(client, g, person)
+    assert page["next"] is None
+    rows: list[Any] = page["items"]
     return rows
 
 
@@ -172,6 +180,73 @@ def on_session(client: TestClient, g: Gym, session: str, by: uuid.UUID | None = 
     return [m["title"] for m in response.json()]
 
 
+# --- the student page, a page at a time (#548) -------------------------------------
+
+
+@pg
+def test_the_student_page_reads_its_material_a_page_at_a_time(
+    client: TestClient, db: Database, gym: Gym
+) -> None:
+    session = one_off(client, gym)
+    for n in range(7):
+        shared(client, gym, session, title=f"Material {n}")
+    # Two shared in the same instant still each show once: the id breaks the tie.
+    run(
+        db.owner_url,
+        lambda c: c.execute(
+            "UPDATE study_material SET created_at = (SELECT created_at FROM study_material"
+            " WHERE gym_id = $1 AND title = 'Material 4') WHERE gym_id = $1"
+            " AND title = 'Material 3'",
+            gym.id,
+        ),
+    )
+
+    first = mine_page(client, gym, gym.ana, limit=3)
+    pages = [first]
+    while pages[-1]["next"] is not None:
+        pages.append(mine_page(client, gym, gym.ana, limit=3, before=pages[-1]["next"]))
+
+    assert [len(p["items"]) for p in pages] == [3, 3, 1]
+    titles = [m["title"] for p in pages for m in p["items"]]
+    assert sorted(titles) == [f"Material {n}" for n in range(7)]
+    assert titles[:2] == ["Material 6", "Material 5"]
+    # Each page as one read of the whole list would order it.
+    assert titles == [m["title"] for m in mine_page(client, gym, gym.ana, limit=50)["items"]]
+
+
+@pg
+def test_the_student_page_has_no_next_page_when_it_holds_everything(
+    client: TestClient, gym: Gym
+) -> None:
+    session = one_off(client, gym)
+    for n in range(3):
+        shared(client, gym, session, title=f"Material {n}")
+
+    page = mine_page(client, gym, gym.ana, limit=3)
+    assert (len(page["items"]), page["next"]) == (3, None)
+    assert mine_page(client, gym, gym.beto) == {"items": [], "next": None}
+
+
+@pg
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"before": "nope"},
+        {"before": f"2026-11-01T10:00:00_{uuid.uuid4()}"},
+        {"before": "2026-11-01T10:00:00+00:00_nope"},
+        {"limit": 0},
+        {"limit": 51},
+    ],
+)
+def test_the_student_page_refuses_a_cursor_it_did_not_write(
+    client: TestClient, gym: Gym, params: dict[str, Any]
+) -> None:
+    response = client.get(
+        "/api/me/material", params=params, headers=as_gym(gym.id, uuid.UUID(gym.ana))
+    )
+    assert response.status_code == 422, response.text
+
+
 # --- audiences --------------------------------------------------------------------
 
 
@@ -184,7 +259,7 @@ def test_the_program_sees_it_and_another_program_does_not(
 
     assert made["audience"] == "program"
     assert made["body"] == "Repasen\nlos tres pasos."
-    listed = client.get("/api/me/material", headers=as_gym(gym.id, uuid.UUID(gym.ana))).json()
+    listed = mine_rows(client, gym, gym.ana)
     assert [
         (m["title"], m["class_type_name"], m["program_name"], m["links"], m["recurring"])
         for m in listed

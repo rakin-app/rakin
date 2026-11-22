@@ -1,4 +1,4 @@
-import { queryOptions, type QueryClient } from '@tanstack/react-query'
+import { infiniteQueryOptions, queryOptions, type QueryClient } from '@tanstack/react-query'
 import { apiFetch } from './client'
 
 /**
@@ -47,6 +47,10 @@ export type MyMaterial = {
   for_names: string[]
 }
 
+/** A page of the student page's material, newest first; `next`, when there is older
+ * material, is the `before` of the page after it. */
+export type MyMaterialPage = { items: MyMaterial[]; next: string | null }
+
 export type MaterialFields = {
   title: string
   body: string | null
@@ -73,8 +77,25 @@ export function materialQuery(host: MaterialHost) {
   })
 }
 
+// The student page shows the recent material first, then older material a page at a
+// time (#548): material never expires, so the list only grows.
+export const MY_MATERIAL_FIRST = 5
+export const MY_MATERIAL_PAGE = 20
+
+function myMaterialPath(before: string | null): string {
+  const params = new URLSearchParams({ limit: String(before ? MY_MATERIAL_PAGE : MY_MATERIAL_FIRST) })
+  if (before) params.set('before', before)
+  return `/api/me/material?${params}`
+}
+
+// "Ver material anterior" fetches the next page into it.
 export function myMaterialQuery() {
-  return queryOptions({ queryKey: ['me', 'material'], queryFn: () => apiFetch<MyMaterial[]>('/api/me/material') })
+  return infiniteQueryOptions({
+    queryKey: ['me', 'material'],
+    queryFn: ({ pageParam }) => apiFetch<MyMaterialPage>(myMaterialPath(pageParam)),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next ?? undefined,
+  })
 }
 
 export function shareMaterial(host: MaterialHost, body: MaterialIn): Promise<Material> {

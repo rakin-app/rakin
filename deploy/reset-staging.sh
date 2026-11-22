@@ -15,7 +15,10 @@
 # real gym. Then it stops api, jobs and caddy, drops and recreates the
 # database, bootstraps and migrates it (the `migrate` one-shot), loads the
 # seed, grants platform operator to every address in STAGING_OPERATORS
-# (comma-separated, in .env), starts everything and runs smoke.sh. Every run,
+# (comma-separated, in .env), starts everything and runs smoke.sh. The seed
+# gives those addresses to seed people too (#503): the first to a student who
+# owes, the second to the owner, so the staging checks can sign in as them by
+# code. It warns of any that MAIL_ALLOW does not cover: no code reaches it. Every run,
 # refusals included, is appended to reset.log. It holds deploy.lock, as
 # deploy.sh does, so a reset and a deploy never run together.
 set -Eeuo pipefail
@@ -82,7 +85,18 @@ reset() {
 	[[ $pg_user =~ $ident && $pg_db =~ $ident ]] || refuse "odd POSTGRES_USER or POSTGRES_DB in .env"
 	base_url=$(env_of PUBLIC_BASE_URL)
 	[ -n "$base_url" ] || refuse ".env has no PUBLIC_BASE_URL to smoke-test"
-	operators=$(env_of STAGING_OPERATORS | tr -d ' ')
+	operators=$(env_of STAGING_OPERATORS | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+	mail_allow=$(env_of MAIL_ALLOW | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+	# mail_allows <address>: MAIL_ALLOW lets mail to it go, as the api's
+	# AllowListMailer does (an address, or its @domain; empty allows all).
+	mail_allows() {
+		[ -n "$mail_allow" ] || return 0
+		local entry
+		for entry in ${mail_allow//,/ }; do
+			if [ "$entry" = "$1" ] || [ "$entry" = "@${1#*@}" ]; then return 0; fi
+		done
+		return 1
+	}
 
 	compose() { "$docker" compose "$@"; }
 	psql_in() { # psql_in <database> <sql>: one value per line
@@ -101,6 +115,10 @@ reset() {
 	trap on_failure ERR
 
 	log "start"
+	for email in ${operators//,/ }; do
+		mail_allows "$email" ||
+			log "warning: MAIL_ALLOW does not cover $email (STAGING_OPERATORS): its sign-in codes will be logged, not sent"
+	done
 	compose up -d --wait postgres
 
 	# A database that is missing, or has no gym table yet (a reset that failed
@@ -126,7 +144,7 @@ reset() {
 	stage=migrating
 	compose --profile migrate run --rm migrate
 	stage=seeding
-	compose run --rm api python -m app.seed
+	compose run --rm api python -m app.seed ${operators:+--sign-in "$operators"}
 	stage="granting operators"
 	granted=0
 	for email in ${operators//,/ }; do

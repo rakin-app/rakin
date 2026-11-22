@@ -65,6 +65,7 @@ in_order() { # in_order <call>...: each first appears after the one before
 }
 said() { grep -q -- "$1" "$dir/out"; }
 logged() { grep -q -- "$1" "$dir/reset.log"; }
+not_logged() { ! logged "$1"; }
 env_file() { printf '%s\n' 'MAIL_FROM=Rakin <no-reply@rakin.app>' 'PUBLIC_BASE_URL=https://stage.test' 'POSTGRES_USER=rakin' 'POSTGRES_DB=rakin' "$@" >"$dir/.env"; }
 
 check "the seed slugs are the seed's (backend/app/seed/data.py)" \
@@ -93,7 +94,7 @@ env_file SEED_ONLY=1
 LOCK_HELD=1 check "refuses while a deploy holds the lock" refused
 check "and logs it" logged "refusing: a deploy holds"
 check "and runs no docker" no_docker_called
-env_file SEED_ONLY=1 'STAGING_OPERATORS=pm@rakin.app, owner@rakin.app'
+env_file SEED_ONLY=1 'STAGING_OPERATORS=pm@rakin.app, Owner@rakin.app' 'MAIL_ALLOW=pm@rakin.app, owner@rakin.app'
 
 GYMS="academia-sur meta" check "refuses when a gym is not the seed's" refused
 check "names that gym" said "not the seed's: meta"
@@ -115,6 +116,18 @@ check "the database is dropped as the superuser, from postgres" called "psql -U 
 check "every operator is granted" in_order \
   "grant --email pm@rakin.app --name pm" "grant --email owner@rakin.app --name owner"
 check "the run is in reset.log" logged "done: academia-sur reseeded, 2 operator(s) granted"
+check "the seed gives the operators' addresses to seed people" \
+  called "python -m app.seed --sign-in pm@rakin.app,owner@rakin.app"
+check "MAIL_ALLOW covering them warns of nothing" not_logged "warning"
+
+env_file SEED_ONLY=1 'STAGING_OPERATORS=pm@rakin.app,owner@example.org,ops@team.example' 'MAIL_ALLOW=pm@rakin.app, @TEAM.example'
+check "resets with an operator MAIL_ALLOW does not cover" run
+check "warns of that one in reset.log" \
+  logged "warning: MAIL_ALLOW does not cover owner@example.org (STAGING_OPERATORS)"
+check "and of no other" [ "$(grep -c warning "$dir/reset.log")" = 1 ]
+env_file SEED_ONLY=1 'STAGING_OPERATORS=pm@rakin.app'
+run
+check "an empty MAIL_ALLOW, which mails everyone, warns of nothing" not_logged "warning"
 
 DB_EXISTS='' check "resets when the database is missing" run
 check "without asking it for gyms" not_called "SELECT slug FROM gym"
@@ -124,6 +137,7 @@ GYMS='' check "resets an empty database" run
 env_file SEED_ONLY=true
 run
 check "no STAGING_OPERATORS grants nobody" not_called "app.operators"
+check "and seeds as it always has" called "python -m app.seed$"
 check "and says so" logged "0 operator(s) granted"
 
 FAIL_ON=app.seed check "a failed seed fails the reset" refused

@@ -494,6 +494,30 @@ def _filler() -> tuple[MemberSpec, ...]:
 MEMBERS: tuple[MemberSpec, ...] = (*NAMED, *_filler())
 
 
+def _sign_in_student() -> MemberSpec:
+    """The first adult whose latest period is past due, who pays for no one and whom no
+    one pays for: their page shows Vencido with Subir comprobante."""
+    guardians = {m.guardian for m in MEMBERS}
+    return next(
+        m
+        for m in MEMBERS
+        if m.standing is Standing.OVERDUE
+        and m.status is S.ACTIVE
+        and not m.is_kid
+        and m.guardian is None
+        and m.key not in guardians
+    )
+
+
+# Who `STAGING_OPERATORS`' addresses become, in order (#503), so the staging checks can
+# sign in by code: a student who owes, to upload a proof, then the owner, who validates
+# it. Two addresses, since one gym holds each address once (`refuse_email_in_gym`).
+SIGN_IN_PEOPLE: tuple[tuple[str, str], ...] = (
+    (_sign_in_student().key, "student, Vencido"),
+    (next(s.key for s in STAFF if s.role is Role.OWNER), "owner"),
+)
+
+
 @dataclass(frozen=True)
 class RequirementSpec:
     """What the gym asks before someone trains (migration 0062)."""

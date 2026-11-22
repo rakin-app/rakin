@@ -9,6 +9,7 @@ import json
 import uuid
 from collections.abc import Iterator
 from datetime import date, timedelta
+from pathlib import Path
 
 import asyncpg
 import pytest
@@ -16,6 +17,7 @@ import pytest
 from app.auth import build_notices
 from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
+from app.integrations.blobstore import LocalBlobStore
 from app.integrations.mailer import Email, MailDeliveryError
 from app.jobs import (
     billing,
@@ -29,6 +31,7 @@ from app.jobs import (
     schedule,
     statements,
     team,
+    uploads,
 )
 from app.notices import Notices
 from tests.conftest import require_test_database_url
@@ -295,7 +298,9 @@ def test_a_minors_statement_with_no_guardian_is_suppressed(gym: Gym) -> None:
 def test_statements_run_nightly_after_billing() -> None:
     notices = Notices(Outbox(), lambda: None, base_url="https://x", secret_key="s" * 32)  # type: ignore[arg-type, return-value]
 
-    assert [job.name for job in daily.jobs(notices)] == [
+    store = LocalBlobStore(root=Path("unused"), secret_key="s" * 32, ttl_seconds=60)
+
+    assert [job.name for job in daily.jobs(notices, store)] == [
         catch_up.NAME,
         month_summary.NAME,
         freezes.NAME,
@@ -307,4 +312,5 @@ def test_statements_run_nightly_after_billing() -> None:
         statements.NAME,
         overdue.NAME,
         month_summary.EMAIL_NAME,
+        uploads.NAME,
     ]

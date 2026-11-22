@@ -405,6 +405,14 @@ docker compose exec postgres psql -U rakin rakin
 docker compose run --rm api python -m app.jobs.daily --today 2026-11-09   # re-run a day's jobs
 ```
 
+**Uploads nobody claimed** (#522). A proof or receipt is PUT to the bucket before the form that claims it is sent, so an abandoned form leaves a file nothing points at. The nightly `uploads` job, the last of `app.jobs.daily`, deletes each file under `proofs/<gym_id>/` and `receipts/<gym_id>/` written more than 48 hours before the run that no ledger entry's `proof_object_key`, no expense's `receipt_object_key` and no `expense_changed` row's before or after names: a receipt replaced or taken off stays, as the correction's history. A forgotten person's proofs go with their entries on the next run. It logs `unclaimed uploads reaped` per gym with `deleted`, `kept` and `failed` counts, never a key; a deletion the bucket refuses fails the day, which the next run retries. A suspended gym's files wait for it to resume. To see it work on staging, upload a proof as a student without sending the payment, then run it now with a short grace (outside `job_run`, so the night's run still happens):
+
+```sh
+docker compose run --rm api python -m app.jobs.uploads --grace-hours 0.01
+```
+
+Its log line for the gym says `deleted: 1`, and the file is gone from the bucket (the R2 dashboard, under `proofs/<gym id>/<person id>/`). Mind the grace on production: a file younger than it may still be claimed by a form left open.
+
 **Resumen del mes by email** (#507) goes to each gym's titular on the first 7 days of the month. To check it in a real inbox at any other time, send one gym's closed month now:
 
 ```sh
@@ -441,10 +449,10 @@ From [`deploy/.env.example`](../deploy/.env.example), with **every secret genera
 | `SECRET_KEY`, `FIELD_ENCRYPTION_KEY`, every `POSTGRES_*_PASSWORD` | its own |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | bucket `rakin-staging`, and a token scoped to it alone (production's is `rakin-production`). Apply its CORS rule once (`app.blob_cors --apply`, [above](#first-deploy-only-the-buckets-cors-rule)) |
 | `SMTP_PASSWORD` | a Resend API key of its own, named for staging |
-| `MAIL_ALLOW` | the team's own addresses: any other recipient is logged (`mail (not allowed, not sent)`), never sent. The seed's people have `example.com` addresses, which would bounce |
+| `MAIL_ALLOW` | the team's own addresses: any other recipient is logged (`mail (not allowed, not sent)`), never sent. The seed's people have `example.com` addresses, which would bounce. It must cover every address in `STAGING_OPERATORS`, or their sign-in codes never arrive: the reset warns in `reset.log` of any it does not |
 | `RESEND_WEBHOOK_SECRET` | empty |
 | `SEED_ONLY` | `1`: `app.seed` runs, and the nightly reset below does |
-| `STAGING_OPERATORS` | the PM's and the owner's addresses, comma-separated: made operators again after each reset |
+| `STAGING_OPERATORS` | the PM's and the owner's addresses, comma-separated: made operators again after each reset, and given to two seed people in Academia Sur so the staging checks can sign in as them. The **first** becomes the student Felipe Díaz, whose payment is past due (Vencido, with Subir comprobante); the **second** becomes the owner, Martín Fuentes, who validates proofs (Validar comprobante). One gym holds each address once, so the two take two addresses. Any further ones are operators only |
 | `COMPOSE_PROFILES`, `BACKUP_*` | unset: nothing on it is worth a backup |
 
 No production key of any kind: no production S3, SMTP, backup or deploy key.
@@ -454,14 +462,16 @@ No production key of any kind: no production S3, SMTP, backup or deploy key.
 After its first deploy, as `deploy` in `/srv/rakin`:
 
 ```sh
-docker compose run --rm api python -m app.seed
+docker compose run --rm api python -m app.seed --sign-in <the STAGING_OPERATORS addresses>
 docker compose run --rm api python -m app.operators grant --email <address> --name <name>   # the PM, the owner
 ./reset-staging.sh --install-cron
 ```
 
 ### The nightly reset
 
-[`deploy/reset-staging.sh`](../deploy/reset-staging.sh), copied to `/srv/rakin` by every deploy, puts the host back to fresh seed data every night at 05:00 America/Santiago: the seed's dates stay current and the day's tests are undone. It stops `api`, `jobs` and `caddy`, drops and recreates the database, runs the `migrate` one-shot (bootstrap and migrations), loads the seed, grants operator to each address in `STAGING_OPERATORS`, starts everything and runs `smoke.sh` on `PUBLIC_BASE_URL`. Staging is down for those few seconds.
+[`deploy/reset-staging.sh`](../deploy/reset-staging.sh), copied to `/srv/rakin` by every deploy, puts the host back to fresh seed data every night at 05:00 America/Santiago: the seed's dates stay current and the day's tests are undone. It stops `api`, `jobs` and `caddy`, drops and recreates the database, runs the `migrate` one-shot (bootstrap and migrations), loads the seed with the `STAGING_OPERATORS` addresses in place of two seed people's own (`app.seed --sign-in`, [above](#the-staging-host)), grants operator to each of those addresses, starts everything and runs `smoke.sh` on `PUBLIC_BASE_URL`. Staging is down for those few seconds. `reset.log` names who each address became (`sign in as Felipe Díaz (student, Vencido): …`), and warns of any address `MAIL_ALLOW` does not cover. Sign in as them with the **code** in the email, never its link: opening the link spends the code. Without `STAGING_OPERATORS` (local dev, CI) the seed is as it always was.
+
+A deploy migrates staging but does not reseed it, so a migration that adds a table the seed fills leaves the seed gym in the old shape until the next night. After a release with migrations, run `./reset-staging.sh` before the staging checks.
 
 It **refuses** unless `.env` has `SEED_ONLY=1`, and refuses if the database holds any gym that is not the seed's (`academia-sur`), so on production, or on a staging that somehow got a real gym, it drops nothing. A database that is missing or has no `gym` table yet (a reset that failed halfway) holds no gym, so the next run goes ahead.
 

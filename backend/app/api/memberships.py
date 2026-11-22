@@ -57,6 +57,7 @@ from app.api.consent import consent_pending
 from app.api.corrections import record_audit
 from app.api.enrolment import cancel_enrolment, charge_enrolment
 from app.api.entries import CURRENT_PERSON, standing_void
+from app.api.history import changes, record_history_set
 from app.api.ledger import period_money, void_period
 from app.contacts import Contact, contact_for
 from app.db import driver_connection
@@ -76,7 +77,14 @@ from app.domain.membership import (
 from app.jobs import lapse
 from app.jobs.billing import billable_membership, write_billing
 from app.notices import WELCOME, Notice, Notices, get_notices
-from app.permissions import LedgerReadSession, LedgerSession, SeesMoney, StaffSession
+from app.permissions import (
+    LedgerReadSession,
+    LedgerSession,
+    Permission,
+    SeesMoney,
+    StaffSession,
+    holds,
+)
 from app.schemas.ledger import DiscountFigures, DiscountShift, VoidConflict
 from app.schemas.memberships import (
     Cancellation,
@@ -118,6 +126,11 @@ NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "membership not found")
 # Starting a plan is money (`money_write`), wherever it is given: by hand, on an
 # enrolment or a return, or approving a join request (#310).
 PLAN_IS_MONEY = HTTPException(status.HTTP_403_FORBIDDEN, "giving a plan needs money_write")
+
+# Bringing someone back on the member list is "Reactivar"'s, `members_manage` (#549).
+RETURN_IS_MEMBERS = HTTPException(
+    status.HTTP_403_FORBIDDEN, "bringing the person back on the list needs members_manage"
+)
 
 # RLS keeps every table to the current gym.
 SELECT_MEMBERSHIP = """
@@ -1187,7 +1200,9 @@ REACTIVATION_STATE = text(
     f"""
     SELECT m.status, pl.kind, pl.anchor, pl.period_start, pl.period_end,
            m.current_period_end, m.credits_remaining, m.person_id, g.settings, m.voided_at,
+           m.cancel_reason, m.cancelled_at,
            (SELECT gp.left_on FROM gym_person gp WHERE gp.person_id = m.person_id) AS left_on,
+           (SELECT gp.left_at FROM gym_person gp WHERE gp.person_id = m.person_id) AS left_at,
            {lapse.unpaid_due(":day", ":validated", "CAST(:kinds AS text[])")},
            {lapse.NOT_DUE_BEFORE}
     FROM membership m JOIN plan pl ON pl.id = m.plan_id JOIN gym g ON g.id = m.gym_id
@@ -1478,28 +1493,70 @@ BILL_ON_UNDONE = text(
 
 CANCEL_UNDONE = "cancel_undone"
 
+# Their record as a return reads it, locked after the membership as `_come_back` locks.
+LOCK_LEFT = text("SELECT left_on, left_reason FROM gym_person WHERE person_id = :id FOR UPDATE")
+
+BACK_ON_ROLL = text(
+    "UPDATE gym_person SET left_on = NULL, left_reason = NULL, left_at = NULL,"
+    " updated_at = now() WHERE person_id = :id"
+)
+
+
+async def back_on_roll(
+    session: AsyncSession, person_id: uuid.UUID, record: Any, recorded: tuple[str, ...]
+) -> None:
+    """Someone who left back on the member list, from `record`, their `left_on` and
+    `left_reason` as `LOCK_LEFT` read them: why they had left goes, and the `recorded`
+    fields that changed are kept as a `history_set` row (Reactivar records the reason
+    alone, an undone Dar de baja the day too)."""
+    await session.execute(BACK_ON_ROLL, {"id": person_id})
+    await record_history_set(session, person_id, changes(record._asdict(), dict.fromkeys(recorded)))
+
+
+def _ended_by_leave(row: Any) -> bool:
+    """Whether the person's Dar de baja ended this membership: cancelled `dado de baja`
+    in its transaction, which `left_at` stamps (0095)."""
+    return (
+        row.left_at is not None
+        and row.cancel_reason == domain.LEFT_REASON
+        and row.cancelled_at == row.left_at
+    )
+
 
 async def _uncancellable(
     session: AsyncSession, tenant: Tenant, membership_id: uuid.UUID, *, lock: bool
-) -> tuple[Callable[[bool], domain.Membership], date]:
-    """The cancelled membership to bring back, as `back(from_today)`, and today; locked
-    with its person with `lock`. A 409 for one not cancelled, a voided one, a pack or a
-    trial, a person who has left the gym, and beside another live plan of theirs. Back
-    to Lapsed when a period past due plus grace is unpaid by tomorrow."""
+) -> tuple[Callable[[bool], domain.Membership], date, uuid.UUID | None]:
+    """The cancelled membership to bring back, as `back(from_today)`, today, and the
+    person who comes back on the list with it when it was their Dar de baja that ended
+    it (#549); locked with its person with `lock`. A 409 for one not cancelled, a voided
+    one, a pack or a trial, a person who has left the gym by another way or since, and
+    beside another live plan of theirs; a 403 when the person would come back and the
+    one acting lacks `members_manage`, which "Reactivar" needs. Back to Lapsed when a
+    period past due plus grace is unpaid by tomorrow."""
     current, row, today, tomorrow = await _come_back(session, tenant, membership_id, lock=lock)
     if current.status is not MembershipStatus.CANCELLED:
         raise _refused(ReactivationRefusal.NOT_CANCELLED, "only a cancelled plan is undone")
     if row.voided_at is not None:
         raise _refused(ReactivationRefusal.VOIDED, "a voided plan stays voided")
+    returning = None
     if row.left_on is not None:
-        raise _refused(
-            ReactivationRefusal.HAS_LEFT, "the person has left the gym: reactivate them first"
-        )
+        if not _ended_by_leave(row):
+            raise _refused(
+                ReactivationRefusal.HAS_LEFT,
+                "the person has left the gym: reactivate them first",
+            )
+        if not await holds(session, tenant, Permission.MEMBERS_MANAGE):
+            raise RETURN_IS_MEMBERS
+        returning = row.person_id
     terms = await _back_on_terms(session, membership_id, current, row, today, verb="undone")
     lapses = _lapses_again(row, tomorrow)
-    return lambda from_today: domain.undo_cancel(
-        current, today=today, terms=terms, lapses=lapses, from_today=from_today
-    ), today
+    return (
+        lambda from_today: domain.undo_cancel(
+            current, today=today, terms=terms, lapses=lapses, from_today=from_today
+        ),
+        today,
+        returning,
+    )
 
 
 @router.get(
@@ -1513,14 +1570,20 @@ async def uncancel_quote(
 ) -> UncancelQuote:
     """What `POST .../uncancel` would do with each `bill_from`, saving nothing: the status
     it returns to, and the periods it bills and their total, for "Deshacer baja" to list
-    before it saves. A plan back to Lapsed bills nothing. Refused as that request would be."""
-    back, today = await _uncancellable(session, tenant, membership_id, lock=False)
+    before it saves. A plan back to Lapsed bills nothing; `returns` when the person comes
+    back on the list with it (#549). Refused as that request would be."""
+    back, today, returning = await _uncancellable(session, tenant, membership_id, lock=False)
     bills = {}
     undone = back(False)
     for bill_from in ("last", "today"):
         _, bills_from, owed = await _reactivation(session, membership_id, back, today, bill_from)
         bills[bill_from] = _bill(bills_from, owed)
-    return UncancelQuote(status=undone.status, last=bills["last"], today=bills["today"])
+    return UncancelQuote(
+        status=undone.status,
+        last=bills["last"],
+        today=bills["today"],
+        returns=returning is not None,
+    )
 
 
 @router.post(
@@ -1540,11 +1603,17 @@ async def uncancel_membership(
     again that night. Its reason and time of cancelling are cleared; a pending plan
     change and a freeze booked ahead that the cancel called off stay called off.
 
+    A plan the person's Dar de baja ended comes back with them (#549): they are back on
+    the member list too, as "Reactivar" brings them, their leaving recorded as a
+    `history_set` row beside the plan's. Undoing a mistaken Dar de baja is then one step,
+    with no new plan and no new billing start.
+
     The `cancel_undone` audit row is written first: the database lets a cancelled row
     change only with it (migration 0092). Refused, writing nothing, for a voided plan,
-    a pack or a trial, a person who has left the gym, and beside another live plan of
-    the person for the same program (`LIVE_PLAN`)."""
-    back, today = await _uncancellable(session, tenant, membership_id, lock=True)
+    a pack or a trial, a person who has left the gym by another way or since, and beside
+    another live plan of the person for the same program (`LIVE_PLAN`); a 403 bringing
+    the person back without `members_manage`."""
+    back, today, returning = await _uncancellable(session, tenant, membership_id, lock=True)
     undone, bills_from, owed = await _reactivation(
         session, membership_id, back, today, body.bill_from
     )
@@ -1557,7 +1626,11 @@ async def uncancel_membership(
         bill_from=body.bill_from,
         bills_from=bills_from.isoformat(),
         period_starts=[p.period_start.isoformat() for p in owed.periods],
+        returned=returning is not None,
     )
+    if returning is not None:
+        record = (await session.execute(LOCK_LEFT, {"id": returning})).one()
+        await back_on_roll(session, returning, record, ("left_on", "left_reason"))
     await session.execute(UNDO_CANCEL, {"id": membership_id, "status": undone.status.value})
     if undone.status is MembershipStatus.ACTIVE:
         await session.execute(
