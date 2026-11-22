@@ -128,6 +128,8 @@ def ids(loaded: Loaded) -> dict[str, str]:
         "slot_id": str(seed.schedule_slots[0]["id"]),
         # A discount quoted (#25).
         "pct": "10",
+        # Where a payment may move (#280), which a coach is refused.
+        "payment_id": unknown,
         # Clases's week or month (#426).
         "from": "2026-11-02",
         "to": "2026-11-08",
