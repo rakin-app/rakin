@@ -325,9 +325,9 @@ class LocalBlobStore:
                     await asyncio.to_thread(out.write, chunk)
             if received != size:
                 raise ValueError("upload smaller than signed")
-            meta = self._meta(key)
-            await asyncio.to_thread(meta.parent.mkdir, parents=True, exist_ok=True)
-            await asyncio.to_thread(meta.write_text, content_type)
+            # The type too: a blob written again over itself (a double tap PUTs one
+            # proof twice) would otherwise read, for a moment, as one with no type (#527).
+            await asyncio.to_thread(_replace_text, self._meta(key), content_type)
             await asyncio.to_thread(tmp.replace, data)
         finally:
             await asyncio.to_thread(tmp.unlink, missing_ok=True)
@@ -362,3 +362,17 @@ class LocalBlobStore:
 
     def _meta(self, key: str) -> Path:
         return self.root / "meta" / key
+
+
+def _replace_text(path: Path, content: str) -> None:
+    """Write `path` beside itself and rename it into place: a reader sees the old text
+    or the new, never an emptied file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".up-")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w") as out:
+            out.write(content)
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
