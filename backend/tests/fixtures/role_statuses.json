@@ -249,6 +249,11 @@
     "coach": 403,
     "owner": 200
   },
+  "GET /api/ledger/export/expenses": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 200
+  },
   "GET /api/ledger/memberships/{membership_id}": {
     "admin": 404,
     "coach": 403,

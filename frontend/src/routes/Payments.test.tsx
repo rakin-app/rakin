@@ -512,8 +512,13 @@ describe('Pagos', () => {
     expect(csv()).toHaveAttribute('download')
     expect(xlsx()).toHaveAttribute('href', '/api/ledger/export?month=2026-11-01&format=xlsx')
 
+    const expenses = () => screen.getByRole('link', { name: copy.exportExpensesCsv })
+    expect(expenses()).toHaveAttribute('href', '/api/ledger/export/expenses?month=2026-11-01')
+    expect(expenses()).toHaveAttribute('download')
+
     await userEvent.selectOptions(screen.getByLabelText(copy.month), '2026-10-01')
     await waitFor(() => expect(csv()).toHaveAttribute('href', '/api/ledger/export?month=2026-10-01&format=csv'))
+    expect(expenses()).toHaveAttribute('href', '/api/ledger/export/expenses?month=2026-10-01')
   })
 
   it('loads the next page with "Cargar más", counting by the latest page', async () => {
@@ -604,8 +609,14 @@ describe('Pagos', () => {
     expect([...header.querySelectorAll('a, button, summary')].map((c) => c.textContent)).toEqual([copy.review(3), copy.record])
     // "Más" beside the period picker, holding the rest.
     const more = document.querySelector('.payments__toolbar .more-menu__list')!
-    // Finanzas and Gastos are tabs above, not here, even for the titular (#531).
-    expect([...more.children].map((c) => c.textContent)).toEqual([copy.extra, copy.exportCsv, copy.exportXlsx])
+    // Finanzas and Gastos are tabs above, not here, even for the titular (#531); the
+    // month's expenses as a CSV sit beside the ledger's, for whoever sees them (#317).
+    expect([...more.children].map((c) => c.textContent)).toEqual([
+      copy.extra,
+      copy.exportCsv,
+      copy.exportExpensesCsv,
+      copy.exportXlsx,
+    ])
   })
 
   it('draws the period picker before the book answers, so the header does not move (#357)', async () => {

@@ -235,15 +235,18 @@ Every settlement in the app counts a period's validated payments and adjustments
 
 ### The accountant's export
 
-"Exportar CSV" and "Exportar Excel" on Pagos download the month shown for the gym's accountant (#40). Export only: no SII boleta is issued. Owner and admin only (`LedgerSession`); a coach gets a 403, and RLS keeps it to the gym.
+"Exportar CSV" and "Exportar Excel" on Pagos download the month shown for the gym's accountant (#40). Export only: no SII boleta is issued. It needs `money_read` (`LedgerReadSession`); a coach gets a 403, and RLS keeps it to the gym. Whoever also holds `expenses_read` gets the month's expenses with it (#317), below.
 
 | Method | Path | Does |
 | --- | --- | --- |
 | `GET` | `/api/ledger/export` | `month`: any day of the month, the current one in the gym's timezone by default. `format`: `csv` (default) or `xlsx`. A file, `pagos-YYYY-MM.csv` or `.xlsx`, as an attachment |
+| `GET` | `/api/ledger/export/expenses` | "Gastos del mes (CSV)" (#317), `expenses_read` alone. `month` as above. A file, `gastos-YYYY-MM.csv`, as an attachment |
 
 One row per ledger entry of the month, by the day it counts on in the gym's timezone: a charge by its period's start, as the book files it (#206); a validated payment or refund by the day it was validated, as `v_monthly_income` counts it, so the export's paid less refunded is the book's `collected_clp` (a validated one with no `validated_at` falls back to the day it was made, so it is never lost from every file); anything else by the day it was made. The Pagos list files a payment by the day it was made, so a proof claimed in October and validated in November is October's on screen and November's in the file: the file says so in a line after its totals. Columns, in Spanish: Fecha, Alumno, RUT, Plan o cobro, Período, Tipo (Cargo, Pago, Ajuste, Devolución, or Anulación for a void, #256, always its own row), Método, Monto (CLP), Estado, Ref. bancaria (`bank_tx_ref`), Nota, then one per custom field the caller sees that is neither sensitive nor archived. A cobro extra's entry (#195) reads as its category and title ("Rifa: Rifa de otoño") with no period. Proofs still waiting are listed on their own, after the rest. Totals count validated entries only: charged, paid (and of it, cobros extra), adjusted (signed, voids apart), voided, refunded, paid less refunded, and what the month's charges still owe today. No email or phone is exported.
 
 The CSV is UTF-8 with a BOM and `;` between fields, which Excel in a Spanish locale opens with a double click; dates dd-mm-yyyy and CLP as plain integers, with the pending proofs and the totals each under a title row after the entries. The XLSX has three sheets (Movimientos, Por validar, Totales) with dates and integers typed as such. Text a person typed that starts like a formula (`=`, `+`, `-`, `@`) is quoted in the CSV and written as a string in the XLSX, so a spreadsheet never runs it (`app/ledger_export.py`).
+
+For a person who also holds `expenses_read` (#317), the XLSX gains two sheets after Totales: **Gastos**, the month's expenses by the day they were paid (Fecha, Categoría, Pagado a, Método, Monto (CLP), Nota, Comprobante Sí or No, Estado Vigente), the voided ones listed apart under a title row with Estado "Anulado"; and **Resumen**: Entradas (`v_monthly_income`, net of refunds), Salidas by category in the gym's order, their total, and Resultado, read by the queries Finanzas reads (`app.api.finances`), so the two never disagree. A voided expense counts in no total. The expenses CSV holds the same rows in the ledger CSV's format, the voided ones and then the totals by category each under a title row. Whoever holds `money_read` without `expenses_read`, as an Administrador does until the gym ticks it, gets the three sheets as before and no expenses link; the ledger's CSV is the same for everyone.
 
 ### Overdue
 

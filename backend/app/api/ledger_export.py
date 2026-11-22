@@ -13,7 +13,14 @@ entries alone (`app.ledger_export`).
 It carries no email or phone, and no custom field that is sensitive, archived, or one
 the caller's role may not see.
 
-Owner and admin only (`LedgerSession`); RLS keeps it to the gym (migration 0006).
+`money_read` only (`LedgerReadSession`); RLS keeps it to the gym (migration 0006).
+Whoever also holds `expenses_read` gets the XLSX with the month's Gastos and a Resumen
+of Entradas, Salidas by category and Resultado, as Finanzas counts them (#317); anyone
+else gets the same three sheets as before, and the CSV is the same for everyone.
+
+`GET /api/ledger/export/expenses?month=2026-11-01` is "Gastos del mes (CSV)": the
+month's expenses by the day they were paid, the voided ones apart, and the totals by
+category. It needs `expenses_read` alone, since it carries no income.
 """
 
 import uuid
@@ -26,11 +33,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import ledger_export as export
 from app.api.custom_fields import reach_of
+from app.api.finances import EXPENSES, INCOME
 from app.api.ledger import ENTRY_DAY, GYM_CLOCK, book_rows
 from app.domain import custom_fields as cf
 from app.domain.billing import SETTLING_KINDS
+from app.domain.dates import add_months
 from app.domain.vocabulary import Words, words_in
-from app.permissions import LedgerReadSession, standing_in_gym
+from app.permissions import (
+    ExpensesReadSession,
+    LedgerReadSession,
+    Permission,
+    holds,
+    standing_in_gym,
+)
 from app.schemas.ledger import ExportFormat
 from app.tenancy import Tenant, current_tenant
 
@@ -59,6 +74,18 @@ FIELD_VALUES = text(
     SELECT person_id, field_key, value FROM person_field_value
     WHERE secret IS NULL AND person_id = ANY(CAST(:people AS uuid[]))
       AND field_key = ANY(CAST(:keys AS text[]))
+    """
+)
+
+# The month's expenses, voided ones included, by the day they were paid.
+EXPENSE_ROWS = text(
+    """
+    SELECT e.spent_on, c.name AS category, e.payee, e.method, e.amount_clp, e.note,
+           e.receipt_object_key IS NOT NULL AS has_receipt, e.voided_at IS NOT NULL AS voided
+    FROM expense e
+    JOIN expense_category c ON c.id = e.category_id
+    WHERE e.spent_on >= :month AND e.spent_on < (:month + interval '1 month')::date
+    ORDER BY e.spent_on, e.created_at, e.id
     """
 )
 
@@ -114,6 +141,64 @@ def export_row(row: Any, values: tuple[str | int | float | date | None, ...]) ->
     )
 
 
+async def month_expenses(
+    session: AsyncSession, month: date, with_income: bool
+) -> export.MonthExpenses:
+    """The month's expenses, and its Entradas when `with_income`, read by the queries
+    Finanzas reads them by, so the two never disagree."""
+    rows = [
+        export.ExpenseRow(
+            day=r.spent_on,
+            category=r.category,
+            payee=r.payee,
+            method=None if r.method is None else export.EXPENSE_METHODS[r.method],
+            amount_clp=r.amount_clp,
+            note=r.note,
+            receipt=r.has_receipt,
+            voided=r.voided,
+        )
+        for r in await session.execute(EXPENSE_ROWS, {"month": month})
+    ]
+    window = {"start": month, "end": add_months(month, 1)}
+    by_category = tuple(
+        (r.name, int(r.amount_clp)) for r in await session.execute(EXPENSES, window)
+    )
+    income = None
+    if with_income:
+        found = (await session.execute(INCOME, window)).first()
+        income = 0 if found is None else int(found.income_clp)
+    return export.MonthExpenses(
+        month=month,
+        expenses=tuple(r for r in rows if not r.voided),
+        voided=tuple(r for r in rows if r.voided),
+        by_category=by_category,
+        income_clp=income,
+    )
+
+
+async def export_month(session: AsyncSession, month: date | None) -> date:
+    """The first of `month`, or of the gym's current one."""
+    clock = (await session.execute(text(GYM_CLOCK))).one()
+    return (month or clock.today).replace(day=1)
+
+
+@router.get("/export/expenses")
+async def expenses_export(
+    session: ExpensesReadSession,
+    # Any day of the month to export; the current one in the gym's timezone by default.
+    month: date | None = None,
+) -> Response:
+    """The month's expenses and their totals, as a CSV to download."""
+    shown = await export_month(session, month)
+    body = export.expenses_csv(await month_expenses(session, shown, with_income=False))
+    name = export.expenses_filename(shown)
+    return Response(
+        content=body,
+        media_type=export.CSV_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
 @router.get("/export")
 async def ledger_export(
     session: LedgerReadSession,
@@ -123,8 +208,7 @@ async def ledger_export(
     export_format: Annotated[ExportFormat, Query(alias="format")] = ExportFormat.CSV,
 ) -> Response:
     """The month's ledger entries and totals, as a file to download."""
-    clock = (await session.execute(text(GYM_CLOCK))).one()
-    shown = (month or clock.today).replace(day=1)
+    shown = await export_month(session, month)
     rows = (
         await session.execute(
             EXPORT_ROWS,
@@ -167,7 +251,10 @@ async def ledger_export(
     )
 
     if export_format is ExportFormat.XLSX:
-        body = export.to_xlsx(month_export)
+        expenses = None
+        if await holds(session, tenant, Permission.EXPENSES_READ):
+            expenses = await month_expenses(session, shown, with_income=True)
+        body = export.to_xlsx(month_export, expenses)
     else:
         body = export.to_csv(month_export)
     name = export.filename(shown, export_format.value)

@@ -17,9 +17,15 @@ with real dates and integers in their cells.
 The member's column is headed by what the gym calls one (#345, `app.domain.vocabulary`):
 "Alumno" for a gym that never said, "Socio" for one that says "socios".
 
-Every text a person typed (a name, a note, a custom field) goes out as text: one that
-starts like a formula is quoted in the CSV and typed as a string in the XLSX, so a
-spreadsheet never runs it.
+For a person who may also see the gym's expenses (`expenses_read`, #317), the XLSX
+gains a **Gastos** sheet, the month's expenses by the day they were paid with the voided
+ones listed apart as "Anulado", and a **Resumen**: Entradas, Salidas by category and
+Resultado, as Finanzas shows them (#316). The same expenses go out as a CSV of their own,
+"Gastos del mes", since a CSV holds one table. Anyone else gets the file as it was.
+
+Every text a person typed (a name, a note, a custom field, a category, a payee) goes out
+as text: one that starts like a formula is quoted in the CSV and typed as a string in
+the XLSX, so a spreadsheet never runs it.
 """
 
 import csv
@@ -86,6 +92,25 @@ FILED_BY = (
     " No incluye el historial anterior a Rakin."
 )
 
+# The expenses' columns (#317), as Gastos heads them.
+EXPENSE_HEADERS = (
+    "Fecha",
+    "Categoría",
+    "Pagado a",
+    "Método",
+    "Monto (CLP)",
+    "Nota",
+    "Comprobante",
+    "Estado",
+)
+# How the gym paid: the ledger's methods, and a card (migration 0083).
+EXPENSE_METHODS = {**METHODS, "card": "Tarjeta"}
+COUNTS = "Vigente"
+VOIDED = "Anulado"
+RECEIPT = {True: "Sí", False: "No"}
+VOIDED_TITLE = "Gastos anulados (no cuentan en los totales)"
+EXPENSE_TOTALS_TITLE = "Totales del mes (sin los anulados)"
+
 CSV_MEDIA_TYPE = "text/csv; charset=utf-8"
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -147,6 +172,33 @@ class MonthExport:
     words: Words = DEFAULT_WORDS
 
 
+@dataclass(frozen=True)
+class ExpenseRow:
+    # The day it was paid on, which decides its month.
+    day: date
+    category: str
+    payee: str | None
+    method: str | None
+    amount_clp: int
+    note: str | None
+    receipt: bool
+    voided: bool = False
+
+
+@dataclass(frozen=True)
+class MonthExpenses:
+    """The month's expenses for a person with `expenses_read` (#317)."""
+
+    month: date
+    # Those that count, by the day they were paid.
+    expenses: tuple[ExpenseRow, ...]
+    voided: tuple[ExpenseRow, ...]
+    # What counts per category, in the gym's order, as Finanzas sums it.
+    by_category: tuple[tuple[str, int], ...]
+    # Entradas as Finanzas counts them; `None` when the file carries no income.
+    income_clp: int | None = None
+
+
 def kind_label(kind: str, voids: bool) -> str:
     return VOID if voids else KINDS[kind]
 
@@ -192,8 +244,29 @@ def total_lines(t: Totals) -> list[tuple[str, int]]:
     ]
 
 
+def expense_total_lines(e: MonthExpenses) -> list[tuple[str, int]]:
+    """What the month spent per category, and in all."""
+    return [*e.by_category, ("Total gastos", sum(amount for _, amount in e.by_category))]
+
+
+def summary_lines(e: MonthExpenses) -> list[tuple[str, int]]:
+    """The Resumen: what came in, what went out by category, and what is left."""
+    assert e.income_clp is not None, "a Resumen needs the month's income"
+    spent = sum(amount for _, amount in e.by_category)
+    return [
+        ("Entradas (cobrado neto)", e.income_clp),
+        *((f"Salidas: {name}", amount) for name, amount in e.by_category),
+        ("Total salidas", spent),
+        ("Resultado (entradas menos salidas)", e.income_clp - spent),
+    ]
+
+
 def filename(month: date, extension: str) -> str:
     return f"pagos-{month:%Y-%m}.{extension}"
+
+
+def expenses_filename(month: date) -> str:
+    return f"gastos-{month:%Y-%m}.csv"
 
 
 # --- CSV ----------------------------------------------------------------------------
@@ -238,9 +311,31 @@ def cells(row: Row) -> list[str | int | float | date | None]:
     ]
 
 
-def to_csv(export: MonthExport) -> bytes:
+def expense_cells(row: ExpenseRow) -> list[str | int | date | None]:
+    return [
+        row.day,
+        row.category,
+        row.payee,
+        row.method,
+        row.amount_clp,
+        row.note,
+        RECEIPT[row.receipt],
+        VOIDED if row.voided else COUNTS,
+    ]
+
+
+def csv_writer() -> tuple[io.StringIO, Any]:
     out = io.StringIO()
-    writer = csv.writer(out, delimiter=";", lineterminator="\r\n")
+    return out, csv.writer(out, delimiter=";", lineterminator="\r\n")
+
+
+def csv_bytes(out: io.StringIO) -> bytes:
+    """What the writer wrote, as Excel opens it with a double click: UTF-8 with a BOM."""
+    return ("\ufeff" + out.getvalue()).encode("utf-8")
+
+
+def to_csv(export: MonthExport) -> bytes:
+    out, writer = csv_writer()
     writer.writerow([*headers(export.words), *(safe_text(f) for f in export.fields)])
     writer.writerows([csv_cell(c) for c in cells(row)] for row in export.entries)
     if export.pending:
@@ -252,7 +347,24 @@ def to_csv(export: MonthExport) -> bytes:
     writer.writerows([label, str(amount)] for label, amount in total_lines(export.totals))
     writer.writerow([])
     writer.writerow([FILED_BY])
-    return ("﻿" + out.getvalue()).encode("utf-8")
+    return csv_bytes(out)
+
+
+def expenses_csv(e: MonthExpenses) -> bytes:
+    """The month's expenses, "Gastos del mes (CSV)": those that count, the voided ones
+    apart under a title row, then the totals by category, as the ledger's CSV is laid
+    out."""
+    out, writer = csv_writer()
+    writer.writerow(EXPENSE_HEADERS)
+    writer.writerows([csv_cell(c) for c in expense_cells(row)] for row in e.expenses)
+    if e.voided:
+        writer.writerow([])
+        writer.writerow([VOIDED_TITLE])
+        writer.writerows([csv_cell(c) for c in expense_cells(row)] for row in e.voided)
+    writer.writerow([])
+    writer.writerow([EXPENSE_TOTALS_TITLE])
+    writer.writerows([safe_text(label), str(amount)] for label, amount in expense_total_lines(e))
+    return csv_bytes(out)
 
 
 # --- XLSX ---------------------------------------------------------------------------
@@ -287,7 +399,20 @@ def sheet(ws: Worksheet, headers: Sequence[str], rows: Iterable[Sequence[Any]]) 
         ws.column_dimensions[get_column_letter(col)].width = min(width + 2, 60)
 
 
-def to_xlsx(export: MonthExport) -> bytes:
+def expense_sheets(book: Workbook, e: MonthExpenses) -> None:
+    """Gastos, the voided ones listed apart under a title row, and the Resumen."""
+    ws = book.create_sheet("Gastos")
+    sheet(ws, EXPENSE_HEADERS, (expense_cells(row) for row in e.expenses))
+    if e.voided:
+        first = ws.max_row + 2
+        put(ws, first, 1, VOIDED_TITLE).font = Font(bold=True)
+        for r, row in enumerate(e.voided, start=first + 1):
+            for col, value in enumerate(expense_cells(row), start=1):
+                put(ws, r, col, value)
+    sheet(book.create_sheet("Resumen"), ("Concepto", "Monto (CLP)"), summary_lines(e))
+
+
+def to_xlsx(export: MonthExport, expenses: MonthExpenses | None = None) -> bytes:
     book = Workbook()
     columns = [*headers(export.words), *export.fields]
     entries = book.active
@@ -298,6 +423,8 @@ def to_xlsx(export: MonthExport) -> bytes:
     totals = book.create_sheet("Totales")
     sheet(totals, ("Concepto", "Monto (CLP)"), total_lines(export.totals))
     put(totals, totals.max_row + 2, 1, FILED_BY)
+    if expenses is not None:
+        expense_sheets(book, expenses)
     out = io.BytesIO()
     book.save(out)
     return out.getvalue()

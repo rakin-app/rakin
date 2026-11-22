@@ -5,6 +5,10 @@ other entry reaches, so the export's rows and totals are exactly what the test w
 a charge billed in February for March, a payment claimed in February and validated in
 March, one validated in April, a void, a refund, an adjustment, a cobro extra's
 payment, a proof waiting and one rejected.
+
+Whoever also sees the gym's expenses (`expenses_read`, #317) gets the XLSX with a Gastos
+sheet and a Resumen, and may download the month's expenses as a CSV of their own;
+whoever holds `money_read` alone gets the file as it was.
 """
 
 import csv
@@ -22,10 +26,12 @@ from openpyxl import load_workbook
 
 from app import ledger_export
 from app.main import create_app
+from app.permissions import Permission
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import unique_slug
 from tests.pg import DEFAULT_TIMEZONE, Database, migrate, run, seed_gym, throwaway_database
+from tests.test_expenses import category, holding, recorded, void
 from tests.test_guardians import add_person
 from tests.test_plans import add_staff
 
@@ -359,7 +365,8 @@ def test_the_xlsx_has_a_sheet_each_with_dates_and_integers_typed(
     assert 'filename="pagos-2020-03.xlsx"' in response.headers["content-disposition"]
 
     book = load_workbook(io.BytesIO(response.content))
-    assert book.sheetnames == ["Movimientos", "Por validar", "Totales"]
+    # The titular sees expenses too: their Gastos and Resumen follow (#317).
+    assert book.sheetnames[:3] == ["Movimientos", "Por validar", "Totales"]
     sheet = book["Movimientos"]
     header = [c.value for c in sheet[1]]
     assert header[:11] == list(ledger_export.HEADERS)
@@ -489,3 +496,212 @@ def test_a_period_and_concept_read_as_the_accountant_reads_them() -> None:
     ]
     assert ledger_export.csv_cell(-5_000) == "-5000"
     assert ledger_export.csv_cell(date(2026, 1, 2) + timedelta(days=1)) == "03-01-2026"
+
+
+def seed_expenses(client: TestClient, db: Database, gym: uuid.UUID) -> None:
+    """March 2020's expenses: the rent with its receipt, the power bill with a note that
+    looks like a formula, water recorded twice and voided once, and April's rent."""
+    rent = recorded(
+        client, gym, spent_on="2020-03-05", amount_clp=650_000, payee="Inmobiliaria Los Robles"
+    )
+    luz = category(client, gym, "Luz")
+    recorded(
+        client,
+        gym,
+        spent_on="2020-03-12",
+        amount_clp=84_000,
+        category_id=luz,
+        payee=None,
+        method="card",
+        note="=HYPERLINK(1)",
+    )
+    agua = category(client, gym, "Agua")
+    twice = recorded(client, gym, spent_on="2020-03-20", amount_clp=21_000, category_id=agua)
+    recorded(client, gym, spent_on="2020-03-20", amount_clp=21_000, category_id=agua, method=None)
+    assert void(client, gym, twice["id"]).status_code == 200
+    recorded(client, gym, spent_on="2020-04-05", amount_clp=650_000)
+
+    async def query(conn: asyncpg.Connection) -> None:
+        async with conn.transaction():
+            await conn.execute("SELECT set_config('app.gym_id', $1, true)", str(gym))
+            await conn.execute(
+                "UPDATE expense SET receipt_object_key = $2 WHERE id = $1",
+                uuid.UUID(rent["id"]),
+                f"receipts/{gym}/{uuid.uuid4()}",
+            )
+
+    run(db.owner_url, query)
+
+
+def xlsx(client: TestClient, gym: uuid.UUID, person: uuid.UUID | None = None) -> Any:
+    response = download(client, gym, "xlsx", person)
+    assert response.status_code == 200, response.text
+    return load_workbook(io.BytesIO(response.content))
+
+
+def values(book: Any, name: str) -> list[list[Any]]:
+    return [[c.value for c in r] for r in book[name].iter_rows()]
+
+
+@pg
+def test_whoever_sees_expenses_gets_a_gastos_sheet_and_a_resumen(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    seed_month(client, db, sur)
+    seed_expenses(client, db, sur)
+    book = xlsx(client, sur)
+    assert book.sheetnames == ["Movimientos", "Por validar", "Totales", "Gastos", "Resumen"]
+
+    gastos = values(book, "Gastos")
+    assert gastos[0] == list(ledger_export.EXPENSE_HEADERS)
+    march = datetime(2020, 3, 5), datetime(2020, 3, 12), datetime(2020, 3, 20)
+    # Those that count by the day they were paid; the voided one apart, below a title.
+    assert gastos[1:] == [
+        [march[0], "Arriendo", "Inmobiliaria Los Robles", "Transferencia", 650_000, None,
+         "Sí", "Vigente"],
+        [march[1], "Luz", None, "Tarjeta", 84_000, "=HYPERLINK(1)", "No", "Vigente"],
+        [march[2], "Agua", "Inmobiliaria Los Robles", None, 21_000, None, "No", "Vigente"],
+        [None] * 8,
+        [ledger_export.VOIDED_TITLE, *[None] * 7],
+        [march[2], "Agua", "Inmobiliaria Los Robles", "Transferencia", 21_000, None, "No",
+         "Anulado"],
+    ]  # fmt: skip
+    sheet = book["Gastos"]
+    assert sheet.cell(row=2, column=1).number_format == ledger_export.XLSX_DATE
+    assert sheet.cell(row=2, column=5).data_type == "n"
+    # A note that looks like a formula is typed as text, never run.
+    assert sheet.cell(row=3, column=6).data_type == "s"
+
+    resumen = dict((r[0], r[1]) for r in values(book, "Resumen")[1:])
+    assert resumen == {
+        "Entradas (cobrado neto)": 40_000,
+        "Salidas: Arriendo": 650_000,
+        "Salidas: Luz": 84_000,
+        "Salidas: Agua": 21_000,
+        "Total salidas": 755_000,
+        "Resultado (entradas menos salidas)": 40_000 - 755_000,
+    }
+    # As Finanzas shows the month, and as the Totales sheet counts what came in.
+    finanzas = client.get(
+        "/api/finances", params={"month": "2020-03-01"}, headers=as_gym(sur)
+    ).json()
+    assert finanzas["income"]["total_clp"] == resumen["Entradas (cobrado neto)"]
+    assert finanzas["expenses_clp"] == resumen["Total salidas"]
+    assert finanzas["result_clp"] == resumen["Resultado (entradas menos salidas)"]
+    totals = dict((r[0], r[1]) for r in values(book, "Totales")[1:])
+    assert totals["Cobrado neto (pagado menos devuelto)"] == resumen["Entradas (cobrado neto)"]
+
+
+@pg
+def test_the_expenses_csv_lists_the_months_expenses_and_their_totals(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    seed_expenses(client, db, sur)
+    response = client.get(
+        "/api/ledger/export/expenses", params={"month": "2020-03-17"}, headers=as_gym(sur)
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/csv")
+    assert 'filename="gastos-2020-03.csv"' in response.headers["content-disposition"]
+    assert response.content.startswith("\ufeff".encode())
+    rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig")), delimiter=";"))
+
+    assert rows == [
+        list(ledger_export.EXPENSE_HEADERS),
+        ["05-03-2020", "Arriendo", "Inmobiliaria Los Robles", "Transferencia", "650000", "",
+         "Sí", "Vigente"],
+        ["12-03-2020", "Luz", "", "Tarjeta", "84000", "'=HYPERLINK(1)", "No", "Vigente"],
+        ["20-03-2020", "Agua", "Inmobiliaria Los Robles", "", "21000", "", "No", "Vigente"],
+        [],
+        [ledger_export.VOIDED_TITLE],
+        ["20-03-2020", "Agua", "Inmobiliaria Los Robles", "Transferencia", "21000", "", "No",
+         "Anulado"],
+        [],
+        [ledger_export.EXPENSE_TOTALS_TITLE],
+        ["Arriendo", "650000"],
+        ["Luz", "84000"],
+        ["Agua", "21000"],
+        ["Total gastos", "755000"],
+    ]  # fmt: skip
+
+
+@pg
+def test_without_expenses_read_the_file_is_as_it_was(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    seed_month(client, db, sur)
+    seed_expenses(client, db, sur)
+    owner = xlsx(client, sur)
+    cobranza = holding(db, sur, Permission.MONEY_READ)
+    for person in (add_staff(db, sur, "admin"), cobranza):
+        book = xlsx(client, sur, person)
+        assert book.sheetnames == ["Movimientos", "Por validar", "Totales"]
+        for name in book.sheetnames:
+            assert values(book, name) == values(owner, name)
+        assert download(client, sur, "csv", person).content == download(client, sur, "csv").content
+        assert (
+            client.get("/api/ledger/export/expenses", headers=as_gym(sur, person)).status_code
+            == 403
+        )
+
+
+@pg
+def test_the_expenses_csv_needs_expenses_read_alone(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    seed_expenses(client, db, sur)
+    secretaria = holding(db, sur, Permission.EXPENSES_READ)
+    response = client.get(
+        "/api/ledger/export/expenses",
+        params={"month": "2020-03-01"},
+        headers=as_gym(sur, secretaria),
+    )
+    assert response.status_code == 200, response.text
+    assert "650000" in response.content.decode("utf-8-sig")
+    # Whoever sees no payments gets no ledger, and a coach neither file.
+    assert download(client, sur, "xlsx", secretaria).status_code == 403
+    coach = add_staff(db, sur, "coach")
+    assert client.get("/api/ledger/export/expenses", headers=as_gym(sur, coach)).status_code == 403
+    # Another gym's expenses are not in it.
+    other = seed_gym(db, unique_slug("academia-norte"))
+    rows = client.get(
+        "/api/ledger/export/expenses", params={"month": "2020-03-01"}, headers=as_gym(other)
+    ).content.decode("utf-8-sig")
+    assert "Inmobiliaria" not in rows and "Total gastos;0" in rows
+
+
+def test_the_resumen_and_the_expenses_totals_read_as_finanzas_does() -> None:
+    month = ledger_export.MonthExpenses(
+        month=MONTH,
+        expenses=(
+            ledger_export.ExpenseRow(
+                day=date(2020, 3, 2),
+                category="=Otros",
+                payee="+56 9 1234 5678",
+                method="Efectivo",
+                amount_clp=10_000,
+                note="@nota",
+                receipt=False,
+            ),
+        ),
+        voided=(),
+        by_category=(("=Otros", 10_000),),
+        income_clp=4_000,
+    )
+    assert ledger_export.summary_lines(month) == [
+        ("Entradas (cobrado neto)", 4_000),
+        ("Salidas: =Otros", 10_000),
+        ("Total salidas", 10_000),
+        ("Resultado (entradas menos salidas)", -6_000),
+    ]
+    rows = list(
+        csv.reader(
+            io.StringIO(ledger_export.expenses_csv(month).decode("utf-8-sig")), delimiter=";"
+        )
+    )
+    # Every text a person typed is quoted when it looks like a formula, a category's
+    # total line included; with nothing voided there is no voided section.
+    assert rows[1] == ["02-03-2020", "'=Otros", "'+56 9 1234 5678", "Efectivo", "10000",
+                       "'@nota", "No", "Vigente"]  # fmt: skip
+    assert rows[2:] == [[], [ledger_export.EXPENSE_TOTALS_TITLE], ["'=Otros", "10000"],
+                        ["Total gastos", "10000"]]  # fmt: skip

@@ -113,6 +113,11 @@ export function exportPath(month: string, format: 'csv' | 'xlsx'): string {
   return `/api/ledger/export?${new URLSearchParams({ month, format })}`
 }
 
+/** The month's expenses as a CSV of their own (#317), for whoever sees expenses. */
+export function expensesExportPath(month: string): string {
+  return `/api/ledger/export/expenses?${new URLSearchParams({ month })}`
+}
+
 // One query per month, filter and search; "Cargar más" fetches the next page into it.
 export function ledgerBookQuery(month: string | undefined, filter: BookFilter, q = '') {
   return infiniteQueryOptions({
