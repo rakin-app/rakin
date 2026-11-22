@@ -421,6 +421,9 @@ def test_the_ledger_offers_every_period_and_refundable_payment_however_old(
         "voided_clp": 0,
         "void_id": None,
         "charged_clp": 45_000,
+        # When it falls due; no "antes" until "Mover vencimiento" moves it (#283).
+        "due_date": periods[0]["due_date"],
+        "due_date_was": None,
     }
     [first] = [p for p in periods if p["id"] == old["billing_period_id"]]
     assert first["outstanding_clp"] == 0

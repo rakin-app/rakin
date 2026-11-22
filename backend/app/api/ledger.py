@@ -1054,12 +1054,32 @@ TIMELINE = text(
 # still standing (#256), if any, and what it took off, which "Restaurar cargo" puts
 # back (#278); and what it charges once its adjustments are taken off, which "Cambiar
 # monto" changes (#279).
+# Whether "Mover vencimiento" moved period `bp`'s due date (#283): the due date it was
+# billed with, before its first move, and the one its latest move left. Unless a freeze
+# moved it since (`shift_billing_periods`), the latest is its due date today. Owner and
+# admin read the audit rows; RLS shows a coach none, and so no "antes".
+DUE_DATE_MOVED = """
+    LEFT JOIN LATERAL (
+        SELECT (array_agg((a.detail->'due_date'->>'before')::date ORDER BY a.at, a.id))[1]
+                   AS first_before,
+               (array_agg((a.detail->'due_date'->>'after')::date
+                          ORDER BY a.at DESC, a.id DESC))[1] AS last_after
+        FROM audit_event a
+        WHERE a.action = 'due_date_changed'
+          AND a.person_id = (SELECT person_id FROM membership WHERE id = bp.membership_id)
+          AND a.detail->>'billing_period_id' = bp.id::text
+    ) moved ON true
+"""
+
 PERIODS = text(
     f"""
     SELECT bp.id, bp.period_start, bp.period_end,
            greatest(bp.amount_due_clp - coalesce(paid.amount, 0), 0) AS outstanding_clp,
            coalesce(vd.amount_clp, 0) AS voided_clp, vd.id AS void_id,
-           bp.amount_due_clp - coalesce(adjusted.amount, 0) AS charged_clp
+           bp.amount_due_clp - coalesce(adjusted.amount, 0) AS charged_clp,
+           bp.due_date,
+           CASE WHEN moved.last_after = bp.due_date AND moved.first_before <> bp.due_date
+                THEN moved.first_before END AS due_date_was
     FROM billing_period bp
     LEFT JOIN LATERAL (
         SELECT v.id, v.amount_clp FROM ledger_entry v
@@ -1074,6 +1094,7 @@ PERIODS = text(
         SELECT sum(a.amount_clp)::bigint AS amount FROM ledger_entry a
         WHERE a.billing_period_id = bp.id AND a.status = :validated AND a.kind = 'adjustment'
     ) adjusted ON true
+    {DUE_DATE_MOVED}
     WHERE bp.membership_id = :id
     ORDER BY bp.period_start DESC, bp.id
     """

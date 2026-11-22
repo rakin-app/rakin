@@ -1406,6 +1406,8 @@ export const es = {
         charge: (month: string, plan: string | null) => `Corregir cargo ${month}${plan ? ` · ${plan}` : ''}`,
         payment: (month: string) => `Corregir pago ${month}`,
         changeAmount: 'Cambiar monto',
+        // "Le doy hasta el 10": a charge owed falls due another day (#283).
+        moveDueDate: 'Mover vencimiento',
         voidCharge: 'Anular cargo',
         // A charge voided by mistake, owed again (#278).
         restoreCharge: 'Restaurar cargo',
@@ -1438,6 +1440,31 @@ export const es = {
         cancel: 'Cancelar',
         working: 'Anulando…',
         done: (month: string, amount: string) => `Cargo de ${month} anulado: ${amount}.`,
+      },
+      // "Mover vencimiento" (#283): the charge falls due another day; the lapse and the
+      // overdue reminders follow it. Its amount stays.
+      dueDateForm: {
+        title: 'Mover vencimiento',
+        intro:
+          'Para darle más días para pagar: el cargo vence otro día, y el plan caduca y los recordatorios de pago se envían según la nueva fecha. El monto no cambia.',
+        day: 'Nuevo vencimiento',
+        hint: (now: string, latest: string) => `Vence el ${now}. Puede moverse hasta el ${latest}.`,
+        dayNeeded: (earliest: string, latest: string) => `Elige un día entre el ${earliest} y el ${latest}.`,
+        unchanged: 'Ya vence ese día: elige otro.',
+        reason: 'Motivo',
+        reasonNeeded: 'Escribe por qué se mueve.',
+        preview: (before: string, after: string) => `Vence: ${before} → ${after}`,
+        submit: 'Mover vencimiento',
+        cancel: 'Cancelar',
+        working: 'Moviendo…',
+        done: (month: string, day: string) => `Cargo de ${month}: ahora vence el ${day}.`,
+      },
+      // Why "Mover vencimiento" was refused (#283).
+      dueDateRefused: {
+        paid: 'Ese cargo ya está pagado completo: no tiene vencimiento que mover.',
+        out_of_range: 'Ese día queda fuera del rango: desde el inicio del período hasta 60 días después de su fin.',
+        unchanged: 'Ya vence ese día: elige otro.',
+        failed: 'No pudimos moverlo. Inténtalo de nuevo.',
       },
       restoreForm: {
         title: 'Restaurar cargo',
@@ -1799,6 +1826,8 @@ export const es = {
         generated: (day: string) => `generado ${day}`,
         // The discount a charge was billed at (#25).
         discounted: (pct: number, reason: string | null) => `descuento ${pct}%${reason ? ` (${reason})` : ''}`,
+        // A due date moved by "Mover vencimiento" (#283): when it falls due now, and before.
+        dueMoved: (day: string, was: string) => `vence ${day} (antes ${was})`,
         unpaid: 'sin pago',
         // A charge partly paid: what has come in against it so far.
         partlyPaid: (amount: string) => `abonado ${amount}`,
@@ -1842,7 +1871,9 @@ export const es = {
         movedIn: (month: string, from: string) => `Recibió pago movido de ${from} → ${month}`,
         // An adjustment by which way it went, as the Libro names it.
         adjustment: (favor: boolean, month: string) => `${favor ? 'Descuento' : 'Recargo'} ${month}`,
-        dueDate: 'Cambió el vencimiento',
+        dueDate: (month: string) => (month ? `Movió vencimiento ${month}` : 'Movió un vencimiento'),
+        // A due date moved (#283), before → after.
+        dates: (before: string, after: string) => `${before} → ${after}`,
         reactivated: 'Reactivó el plan',
         cancelUndone: 'Deshizo la baja',
         // A discount set, changed or taken off (#25): its percentage before → after, and from when.

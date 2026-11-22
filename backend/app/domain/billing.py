@@ -185,6 +185,17 @@ def restore(period: BillingPeriod, voided_clp: int, reason: str) -> Settlement:
     return _resettled(period, entry, entry.amount_clp)
 
 
+# "Mover vencimiento" (#283) moves a due date at most this many days past its period's end.
+MAX_DUE_DATE_DAYS_PAST_END = 60
+
+
+def due_date_bounds(period: BillingPeriod) -> tuple[date, date]:
+    """The days `period` may fall due on once moved (#283): from its first day to its
+    last plus `MAX_DUE_DATE_DAYS_PAST_END`. Its dates themselves stay, since the next
+    period bills from them (docs/design/billing-corrections.md, C9)."""
+    return period.period_start, period.period_end + timedelta(days=MAX_DUE_DATE_DAYS_PAST_END)
+
+
 def refund(
     period: BillingPeriod,
     payment: LedgerEntry,

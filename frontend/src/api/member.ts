@@ -160,6 +160,10 @@ export type LedgerPeriod = {
   // What it charges, its adjustments taken off but not its payments: what "Cambiar
   // monto" changes (#279).
   charged_clp: number
+  // When it falls due, and, once "Mover vencimiento" moved it (#283), the due date it was
+  // billed with; null if never moved, or if a freeze moved it since.
+  due_date: string
+  due_date_was: string | null
 }
 
 /** A validated payment with something left to give back (backend `RefundablePayment`). */
@@ -296,6 +300,8 @@ export type Correction = {
   // On a payment moved (#280): `out` of this person's period or `in` to it, and the other period's start.
   moved?: 'out' | 'in' | null
   other_period_start?: string | null
+  // On a `due_date_changed` row (#283): the period's due date before and after.
+  due_date?: { before: string; after: string } | null
 }
 
 /** A discount at one moment: 0 and null with none (backend `DiscountFigures`). */
@@ -361,6 +367,27 @@ export type RecordedRestore = { period: SettledPeriod }
 
 export function recordRestore(body: RestoreRecord): Promise<RecordedRestore> {
   return apiFetch<RecordedRestore>('/api/ledger/restores', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** Mover vencimiento (#283): "le doy hasta el 10", the period falls due on another day. */
+export type DueDateRecord = { due_date: string; reason: string }
+
+export type DueDateRefusal = 'paid' | 'out_of_range' | 'unchanged'
+
+export type MovedDueDate = { id: string; due_date: string; due_date_was: string }
+
+export function moveDueDate(periodId: string, body: DueDateRecord): Promise<MovedDueDate> {
+  return apiFetch<MovedDueDate>(`/api/ledger/periods/${encodeURIComponent(periodId)}/due-date`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+}
+
+/** The 409's refusal of "Mover vencimiento", for the form to say why. */
+export function dueDateRefused(error: unknown): DueDateRefusal | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
+  return code === 'paid' || code === 'out_of_range' || code === 'unchanged' ? code : null
 }
 
 /** Anular un pago registrado por error (#281): all that is left of it undone; the

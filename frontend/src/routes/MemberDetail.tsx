@@ -19,11 +19,13 @@ import {
 import {
   aheadQuery,
   correctionsQuery,
+  dueDateRefused,
   editFreeze,
   endFreeze,
   freezeMembership,
   membershipLedgerQuery,
   membershipsQuery,
+  moveDueDate,
   moveRefused,
   moveTargetsQuery,
   personQuery,
@@ -544,15 +546,15 @@ function useOtherLedgers(memberships: readonly Membership[], shown: readonly Mem
  * line's fixes go to (#279). */
 type Charge = { membership: Membership; period: LedgerPeriod; balance: number }
 
-type ChargeFix = 'changeAmount' | 'voidCharge' | 'restoreCharge'
+type ChargeFix = 'changeAmount' | 'moveDueDate' | 'voidCharge' | 'restoreCharge'
 
 /** What can be done to `charge`, as a Libro line offers it (#279): a charge voided stands
- * restored, one owing is voided, and any is changed. Nothing on a plan voided by mistake,
- * which is assigned again. */
+ * restored, one owing falls due another day (#283) or is voided, and any is changed.
+ * Nothing on a plan voided by mistake, which is assigned again. */
 function chargeFixes({ membership, period }: Charge): ChargeFix[] {
   if (membership.voided_at) return []
   if (period.void_id) return ['restoreCharge']
-  return period.outstanding_clp > 0 ? ['changeAmount', 'voidCharge'] : ['changeAmount']
+  return period.outstanding_clp > 0 ? ['changeAmount', 'moveDueDate', 'voidCharge'] : ['changeAmount']
 }
 
 /** "Mensual · Caducado": which plan another plan's charge is on, as #271 labels it. */
@@ -870,8 +872,8 @@ function FixPreview({ month, owed, balance }: { month?: string; owed?: [number, 
   )
 }
 
-/** A charge line's fixes (#279): "Cambiar monto", "Anular cargo" or "Restaurar cargo",
- * whichever apply; `plans` names the plan, for another plan's charge (#271). */
+/** A charge line's fixes (#279): "Cambiar monto", "Mover vencimiento" (#283), "Anular
+ * cargo" or "Restaurar cargo", whichever apply; `plans` names the plan, for another plan's charge (#271). */
 function ChargeFixes({
   charge,
   fixes,
@@ -891,6 +893,8 @@ function ChargeFixes({
       {(fix) =>
         fix === 'changeAmount' ? (
           <ChangeAmountForm charge={charge} onCancel={onCancel} onDone={onDone} />
+        ) : fix === 'moveDueDate' ? (
+          <MoveDueDateForm charge={charge} onCancel={onCancel} onDone={onDone} />
         ) : fix === 'voidCharge' ? (
           <VoidChargeForm charge={charge} onCancel={onCancel} onDone={onDone} />
         ) : (
@@ -907,6 +911,116 @@ function voidRefusal(error: Error): string {
   if (!refused) return copy.voidRefused.failed
   if (refused.code === 'paid') return copy.voidRefused.paid(clp(refused.amount_clp ?? 0))
   return copy.voidRefused[refused.code]
+}
+
+/** What a refused "Mover vencimiento" says (#283). */
+function dueDateRefusal(error: Error): string {
+  return copy.dueDateRefused[dueDateRefused(error) ?? 'failed']
+}
+
+/** A due date moves at most this many days past its period's end (`billing.due_date_bounds`). */
+const DUE_DATE_DAYS_PAST_END = 60
+
+/** "Mover vencimiento" (#283): "le doy hasta el 10". The charge falls due on another day,
+ * from its period's start to its end plus 60 days; the lapse and the overdue emails follow. */
+function MoveDueDateForm({
+  charge,
+  onCancel,
+  onDone,
+}: {
+  charge: Charge
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.dueDateForm
+  const ids = { day: useId(), hint: useId(), reason: useId() }
+  const { period } = charge
+  const month = monthName(period.period_start)
+  const earliest = period.period_start
+  const latest = addDays(period.period_end, DUE_DATE_DAYS_PAST_END)
+  const [day, setDay] = useState('')
+  const [reason, setReason] = useState('')
+  const [checked, setChecked] = useState(false)
+  const dayOk = day >= earliest && day <= latest && day !== period.due_date
+  const reasonOk = reason.trim() !== ''
+
+  const moved = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => moveDueDate(period.id, { due_date: day, reason: reason.trim() }),
+    onSuccess: async (result) => {
+      onDone(form.done(month, shortDay(result.due_date)))
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    if (dayOk && reasonOk) moved.mutate()
+  }
+
+  return (
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+      <p className="member__detail">{form.intro}</p>
+      <label htmlFor={ids.day} className="member__label">
+        {form.day}
+      </label>
+      <Input
+        id={ids.day}
+        type="date"
+        min={earliest}
+        max={latest}
+        value={day}
+        aria-describedby={ids.hint}
+        aria-invalid={checked && !dayOk}
+        onChange={(e) => setDay(e.target.value)}
+      />
+      <p id={ids.hint} className="member__detail">
+        {form.hint(shortDay(period.due_date), shortDay(latest))}
+      </p>
+      {checked && !dayOk && (
+        <Banner tone="error">
+          {day === period.due_date ? form.unchanged : form.dayNeeded(shortDay(earliest), shortDay(latest))}
+        </Banner>
+      )}
+      <label htmlFor={ids.reason} className="member__label">
+        {form.reason}
+      </label>
+      <Input
+        id={ids.reason}
+        type="text"
+        maxLength={500}
+        value={reason}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      {checked && !reasonOk && (
+        <Banner tone="error">
+          {form.reasonNeeded}
+        </Banner>
+      )}
+      {dayOk && (
+        <div className="member__fix-preview">
+          <span className="member__detail">{form.preview(shortDay(period.due_date), shortDay(day))}</span>
+        </div>
+      )}
+      {moved.error && (
+        <Banner tone="error">
+          {dueDateRefusal(moved.error)}
+        </Banner>
+      )}
+
+      <div className="member__form-actions">
+        <Button disabled={moved.isPending} onClick={onCancel}>
+          {form.cancel}
+        </Button>
+        <Button type="submit" variant="primary" disabled={moved.isPending} busy={moved.isPending}>
+          {moved.isPending ? form.working : form.submit}
+        </Button>
+      </div>
+    </form>
+  )
 }
 
 /** What a refused restore says (#278). */
@@ -2676,11 +2790,13 @@ function Ledger({
             }
             const { entry } = line
             const fixes = fixesOf(entry)
+            const period = entry.billing_period_id === null ? undefined : periods.get(entry.billing_period_id)
             return (
               <Entry
                 key={entry.id}
                 entry={entry}
                 membershipId={membership.id}
+                period={entry.kind === 'charge' ? period : undefined}
                 unpaid={entry.billing_period_id !== null && open.has(entry.billing_period_id)}
                 paidClp={entry.billing_period_id === null ? 0 : (open.get(entry.billing_period_id) ?? 0)}
                 fix={
@@ -2816,6 +2932,9 @@ function CorrectionLine({ correction: c }: { correction: Correction }) {
       {discount && (
         <span className="member__entry-amount">{words.discountPct(discount.before.pct, discount.after.pct)}</span>
       )}
+      {c.due_date && (
+        <span className="member__entry-amount">{words.dates(shortDay(c.due_date.before), shortDay(c.due_date.after))}</span>
+      )}
     </li>
   )
 }
@@ -2825,7 +2944,7 @@ function correctionTitle(c: Correction): string {
   const month = c.period_start ? monthName(c.period_start) : ''
   switch (c.action) {
     case 'due_date_changed':
-      return words.dueDate
+      return words.dueDate(month)
     case 'membership_reactivated':
       return words.reactivated
     case 'cancel_undone':
@@ -2870,6 +2989,7 @@ function Entry({
   unpaid,
   paidClp,
   membershipId,
+  period,
   fix,
 }: {
   entry: TimelineEntry
@@ -2877,9 +2997,11 @@ function Entry({
   paidClp: number
   // The Libro's plan: a payment moved to or from another names that one (#280).
   membershipId?: string
+  // A charge's period: "vence 10 nov (antes 1 nov)" once its due date moved (#283).
+  period?: LedgerPeriod
   fix?: LineFix | null
 }) {
-  const { title, detail, tone } = describeEntry(entry, unpaid, paidClp, membershipId)
+  const { title, detail, tone } = describeEntry(entry, unpaid, paidClp, membershipId, period)
   // A voided charge stays, struck through and labelled, not hidden (#256).
   const struck = entry.voided ? ' member__entry--voided' : ''
   return (
@@ -2911,6 +3033,7 @@ function describeEntry(
   unpaid: boolean,
   paidClp = 0,
   membershipId?: string,
+  period?: LedgerPeriod,
 ): { title: string; detail: string; tone: Tone } {
   const words = copy.ledger
   const month = entry.period_start ? monthName(entry.period_start) : ''
@@ -2941,6 +3064,8 @@ function describeEntry(
               )
             : words.generated(shortDay(entry.created_at)),
           entry.discount_pct ? words.discounted(entry.discount_pct, entry.discount_reason ?? null) : null,
+          // Its due date moved by "Mover vencimiento" (#283).
+          period?.due_date_was ? words.dueMoved(shortDay(period.due_date), shortDay(period.due_date_was)) : null,
           unpaid ? (paidClp > 0 ? words.partlyPaid(clp(paidClp)) : words.unpaid) : null,
         ),
         tone: unpaid ? 'owed' : 'muted',

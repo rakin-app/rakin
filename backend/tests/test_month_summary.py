@@ -117,7 +117,7 @@ def a_busy_month(client: TestClient, db: Database, gym: uuid.UUID) -> None:
 def owing(db: Database, gym: uuid.UUID, status: str, amount: int) -> None:
     """A membership in `status` with a period of `amount` charged in `MONTH` and unpaid."""
     _, membership = a_member(db, gym, status=status)
-    period = a_period(db, gym, membership)
+    period = a_period(db, gym, membership, amount=amount)
     admin(
         db,
         "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
@@ -127,7 +127,6 @@ def owing(db: Database, gym: uuid.UUID, status: str, amount: int) -> None:
         period,
         amount,
     )
-    admin(db, "UPDATE billing_period SET amount_due_clp = $2 WHERE id = $1", period, amount)
 
 
 def without(page: dict[str, Any], *keys: str) -> dict[str, Any]:
