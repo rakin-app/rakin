@@ -173,6 +173,78 @@ class PaymentVoidConflict(BaseModel):
     message: str
 
 
+class MoveRecord(BaseModel):
+    """Mover un pago (#280): all or part of a validated payment, to another period of the
+    same plan, another plan of the same person, or a sibling's. Neither income nor a
+    refund: the money stays, recorded where it belongs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # The validated payment to move.
+    payment_id: uuid.UUID
+    # The period it goes to; its membership is the period's.
+    billing_period_id: uuid.UUID
+    # At most what is left of the payment after its refunds and earlier moves; all of it
+    # for a payment that carried credit.
+    amount_clp: Amount
+    # Mandatory, for staff. The student sees the move, never why.
+    reason: Note
+
+
+class MoveRefusal(StrEnum):
+    """Why a payment cannot be moved, for the ficha to say so."""
+
+    # Pending or rejected: a proof is reviewed, not moved.
+    NOT_VALIDATED = "not_validated"
+    # On a cobro extra line: plan and cobro money are not mixed.
+    EXTRA_LINE = "extra_line"
+    # The period it is on already.
+    SAME_PERIOD = "same_period"
+    # Neither the same person nor one who shares a guardian with them.
+    UNRELATED = "unrelated"
+    # Onto a plan voided as started by mistake (#256).
+    PLAN_VOIDED = "plan_voided"
+    # Onto a period with a proof waiting: it is reviewed first.
+    PENDING = "pending"
+    # Onto a period paid in full.
+    PAID = "paid"
+    # Refunded, moved or undone already, all of it.
+    NOTHING_LEFT = "nothing_left"
+    # More than is left of it.
+    BEYOND_LEFT = "beyond_left"
+    # Part of a payment that carried credit: it moves whole.
+    WHOLE_ONLY = "whole_only"
+
+
+class MoveConflict(BaseModel):
+    code: MoveRefusal
+    message: str
+
+
+class MoveTarget(BaseModel):
+    """A period a payment may be moved to: still owing, of the same person or a sibling."""
+
+    membership_id: uuid.UUID
+    billing_period_id: uuid.UUID
+    person_id: uuid.UUID
+    person_name: str
+    plan_name: str
+    period_start: date
+    period_end: date
+    outstanding_clp: int
+    # A proof waits on it: refused until it is reviewed.
+    pending: bool
+
+
+class MoveTargets(BaseModel):
+    # What is left of the payment to move.
+    movable_clp: int
+    # It carried credit: it moves only as a whole, and its credit with it.
+    whole_only: bool
+    # Every period it may go to, the payment's own person first, then by date.
+    targets: list[MoveTarget]
+
+
 class Entry(BaseModel):
     id: uuid.UUID
     # The membership whose period it settles, or none for one on a cobro line (#195).
@@ -237,6 +309,20 @@ class RecordedPaymentVoid(BaseModel):
     reverted: Entry | None = None
     # The period, or the cobro line, as the undoing leaves it: owed again.
     period: Period
+
+
+class RecordedMove(BaseModel):
+    # The refund-shaped entry taking the amount off the payment's period.
+    moved_out: Entry
+    # The payment, `purpose = 'move'`, on the new period.
+    moved_in: Entry
+    # The credit the payment carried, reverted with it; none if it carried none.
+    reverted: Entry | None = None
+    # What the new period does not need, carried as any overpayment is.
+    credit: Entry | None = None
+    # Both periods as the move leaves them.
+    from_period: Period
+    to_period: Period
 
 
 class RecordedAdjustment(BaseModel):
@@ -323,6 +409,10 @@ class Correction(BaseModel):
     after: Figures | None
     # On a `discount_changed` row; null on every other.
     discount: DiscountShift | None = None
+    # On a payment moved (#280): the other period's start, where it went (`moved`
+    # `out`) or came from (`in`).
+    moved: str | None = None
+    other_period_start: date | None = None
 
 
 class Corrections(BaseModel):
@@ -347,6 +437,18 @@ class Restored(BaseModel):
     by_name: str | None
     at: datetime
     void: Voided
+
+
+class MovedWith(BaseModel):
+    """The other half of a payment moved (#280): where it went, or came from."""
+
+    billing_period_id: uuid.UUID
+    period_start: date
+    membership_id: uuid.UUID
+    plan_name: str
+    # Whose: a sibling's, when it is not the line's own person.
+    person_id: uuid.UUID
+    person_name: str
 
 
 class TimelineEntry(BaseModel):
@@ -377,6 +479,9 @@ class TimelineEntry(BaseModel):
     # The discount its period was billed at, and why (#25); 0 and null with none.
     discount_pct: int = 0
     discount_reason: str | None = None
+    # On either half of a payment moved (#280): the other half's period, "Movido a
+    # diciembre" or "Movido de noviembre".
+    moved: MovedWith | None = None
 
 
 class FreezeEdge(StrEnum):

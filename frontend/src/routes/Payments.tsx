@@ -607,6 +607,8 @@ function kindLabel(entry: BookEntry): string {
   // A payment undone as recorded by mistake (#281), and its credit taken back.
   if (entry.purpose === 'mistake') return copy.paymentVoid
   if (entry.purpose === 'revert' && !entry.period) return copy.creditReverted
+  // Either half of a payment moved (#280): neither income nor a refund.
+  if (entry.purpose === 'move') return copy.moved[entry.kind === 'payment' ? 'in' : 'out']
   if (entry.kind === 'adjustment' && entry.period) return copy.adjustment[entry.amount_clp > 0 ? 'favor' : 'owed']
   return copy.kind[entry.kind]
 }
@@ -693,6 +695,8 @@ function detailLabel(entry: BookEntry): string {
     const category = entry.extra ? t.admin.extra.category[entry.extra.category] : null
     return [category, copy.mistake, entry.note].filter(Boolean).join(' · ')
   }
+  // A payment moved (#280): no money came or went; the reason is staff's.
+  if (entry.purpose === 'move') return [entry.plan_name, entry.note].filter(Boolean).join(' · ')
   // A cobro extra, labelled by its category (#195), then how the money came.
   if (entry.extra) {
     const category = t.admin.extra.category[entry.extra.category]

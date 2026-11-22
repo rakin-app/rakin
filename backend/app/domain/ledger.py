@@ -9,7 +9,8 @@ A void is an adjustment in the member's favour of whatever its period still owes
 that nothing is owed on it any more (#256). A restore puts a void's amount back on its
 period, as if the void had not happened (#278). A payment recorded by mistake is undone
 with a refund of what is left of it (`mistake`, #281), and the credit it carried with
-an adjustment of minus as much (`revert`).
+an adjustment of minus as much (`revert`). A payment moved to another period is a
+refund out of its own and a payment into the other (`move`, #280).
 """
 
 from dataclasses import dataclass, replace
@@ -58,7 +59,7 @@ class LedgerEntry:
     note: str | None = None
     # Why a correction was written, its reason in `note`: a void of what its period
     # still owes (#256), a restore of a void (#278), a payment undone (#281) and the
-    # credit it carried reverted; `None` for any other entry.
+    # credit it carried reverted, a payment moved (#280); `None` for any other entry.
     purpose: Purpose | None = None
 
     def __post_init__(self) -> None:
@@ -79,6 +80,8 @@ class LedgerEntry:
             raise ValueError("a payment undone is a refund of it")
         if self.purpose is Purpose.REVERT and self.kind is not EntryKind.ADJUSTMENT:
             raise ValueError("a revert is an adjustment")
+        if self.purpose is Purpose.MOVE and self.kind not in (EntryKind.PAYMENT, EntryKind.REFUND):
+            raise ValueError("a move is a refund out of one period and a payment into another")
 
 
 def _move(entry: LedgerEntry, to: EntryStatus) -> None:

@@ -62,3 +62,31 @@ async def insert_entry(session: AsyncSession, entry: LedgerEntry, **columns: Any
         },
     )
     return Entry.model_validate(dict(result.one()._mapping))
+
+
+def moved_join(entry: str) -> str:
+    """The other half of a payment moved (#280), for `entry`, a `ledger_entry`, as `mv`:
+    the pair shares `corrects` (the payment) and its transaction's `created_at`, one of
+    them a refund out and the other a payment in. Its period, plan and person."""
+    return f"""
+    LEFT JOIN LATERAL (
+        SELECT o.billing_period_id, obp.period_start, o.membership_id,
+               opl.name AS plan_name, om.person_id, ogp.name AS person_name
+        FROM ledger_entry o
+        JOIN billing_period obp ON obp.id = o.billing_period_id
+        JOIN membership om ON om.id = o.membership_id
+        JOIN plan opl ON opl.id = om.plan_id
+        JOIN gym_person ogp ON ogp.gym_id = om.gym_id AND ogp.person_id = om.person_id
+        WHERE {entry}.purpose = 'move' AND o.purpose = 'move' AND o.corrects = {entry}.corrects
+          AND o.kind <> {entry}.kind AND o.created_at = {entry}.created_at
+        ORDER BY o.id
+        LIMIT 1
+    ) mv ON true
+"""
+
+
+MOVED_COLUMNS = (
+    "mv.billing_period_id AS moved_period_id, mv.period_start AS moved_period_start,"
+    " mv.membership_id AS moved_membership_id, mv.plan_name AS moved_plan_name,"
+    " mv.person_id AS moved_person_id, mv.person_name AS moved_person_name"
+)

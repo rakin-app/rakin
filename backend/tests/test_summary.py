@@ -534,16 +534,23 @@ def test_a_payment_staff_moved_is_not_one_of_the_months_payments(
     on = local(MONTH + timedelta(days=3))
     paid(db, gym, membership, first, made=on, by=person)
     moved = admin(db, "SELECT id FROM ledger_entry WHERE billing_period_id = $1", first)
-    for period, kind in ((first, "refund"), (second, "payment")):
-        admin(
-            db,
-            "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
-            " kind, status, method, created_at, validated_by, validated_at, purpose,"
-            " corrects, refund_of, note) VALUES ($1, $2, $3, 30000, $4, 'validated',"
-            " 'transfer', $5, $6, $5, 'move', $7, $8, 'otro período')",
-            gym, membership, period, kind, on, seeded_owner(gym), moved,
-            moved if kind == "refund" else None,
-        )  # fmt: skip
+    half = (
+        "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
+        " kind, status, method, created_at, validated_by, validated_at, purpose,"
+        " corrects, refund_of, note) VALUES ($1, $2, $3, 30000, $4, 'validated',"
+        " 'transfer', $5, $6, $5, 'move', $7, $8, 'otro período')"
+    )
+
+    # Both halves in one transaction: the database holds a move to its pair (0089).
+    async def pair(conn: Any) -> None:
+        async with conn.transaction():
+            for period, kind in ((first, "refund"), (second, "payment")):
+                await conn.execute(
+                    half, gym, membership, period, kind, on, seeded_owner(gym), moved,
+                    moved if kind == "refund" else None,
+                )  # fmt: skip
+
+    run(db.admin_url, pair)
 
     page = summary(client, gym)
 

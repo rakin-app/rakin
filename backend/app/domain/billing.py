@@ -26,7 +26,9 @@ counts towards the payment's period, which may open again (#38). A charge made b
 mistake is voided (`void`): an adjustment of all the period still owes (#256). A
 payment recorded by mistake is undone (`undo_payment`, #281): a refund of what is left
 of it, which the reports count as a correction rather than money given back, and the
-credit it carried, if any, reverted (`revert_credit`).
+credit it carried, if any, reverted (`revert_credit`). A payment recorded on the wrong
+period, plan or sibling is moved (#280): out of its period with a refund-shaped entry
+(`move_out`) and into another with a payment (`move_in`), neither income nor a refund.
 """
 
 from collections.abc import Callable, Iterable
@@ -239,6 +241,51 @@ def revert_credit(credit_clp: int, reason: str) -> LedgerEntry:
         note=reason.strip(),
         purpose=Purpose.REVERT,
     )
+
+
+def move_out(
+    period: BillingPeriod,
+    payment: LedgerEntry,
+    given_back_clp: int,
+    amount_clp: int,
+    reason: str,
+) -> Settlement:
+    """Take `amount_clp` of `payment` off `period`, which it paid, to move it to another
+    (#280): a refund-shaped entry, `purpose = 'move'`, of at most what is left of it after
+    the `given_back_clp` its refunds and earlier moves took. The period owes it again, as
+    after a refund, but no money left: `move_in` puts it on the other period."""
+    if not reason.strip():
+        raise ValueError("moving a payment needs a reason")
+    if payment.kind is not EntryKind.PAYMENT or payment.status is not EntryStatus.VALIDATED:
+        raise InvalidTransition("only a validated payment is moved")
+    if amount_clp <= 0:
+        raise ValueError("a move takes a positive amount")
+    if amount_clp > payment.amount_clp - given_back_clp:
+        raise InvalidTransition("a move exceeds what is left of its payment")
+    entry = LedgerEntry(
+        kind=EntryKind.REFUND,
+        amount_clp=amount_clp,
+        status=EntryStatus.VALIDATED,
+        note=reason.strip(),
+        purpose=Purpose.MOVE,
+    )
+    return _resettled(period, entry, -amount_clp)
+
+
+def move_in(period: BillingPeriod, amount_clp: int, reason: str) -> Settlement:
+    """The other half of a move (#280): a validated payment of `amount_clp` on `period`,
+    `purpose = 'move'`, settled as any payment is (`apply`), so what `period` does not
+    need is carried as credit. Refused on a period paid in full."""
+    if not reason.strip():
+        raise ValueError("moving a payment needs a reason")
+    entry = LedgerEntry(
+        kind=EntryKind.PAYMENT,
+        amount_clp=amount_clp,
+        status=EntryStatus.VALIDATED,
+        note=reason.strip(),
+        purpose=Purpose.MOVE,
+    )
+    return apply(period, entry)
 
 
 def validate_payment(period: BillingPeriod, entry: LedgerEntry) -> Settlement:

@@ -312,6 +312,18 @@ describe('Pagos', () => {
     expect(kpis.textContent).not.toContain('Devuelto')
   })
 
+  it('labels both halves of a payment moved, neither income nor a refund (#280)', async () => {
+    const out = entry({ id: 'out', kind: 'refund', method: null, note: 'era de diciembre', refund_of: 'pay', purpose: 'move' })
+    const into = entry({ id: 'in', kind: 'payment', method: 'transfer', note: 'era de diciembre', purpose: 'move' })
+    stubApi({ book: () => ({ ...BOOK, items: [into, out], total: 2 }) })
+    renderAt('/admin/pagos')
+
+    const rows = within(await table()).getAllByRole('row').slice(1).map(cells)
+    expect(rows.map((r) => r[2])).toEqual([copy.moved.in, copy.moved.out])
+    expect(rows[0]![4]).toContain('era de diciembre')
+    expect(rows.map((r) => r[6])).toEqual(['$45.000', '−$45.000'])
+  })
+
   it('names the credit reverted with a payment undone, not a plain adjustment (#281)', async () => {
     const reverted = entry({ id: 'rev', kind: 'adjustment', amount_clp: -5000, period: null, purpose: 'revert', note: 'x' })
     stubApi({ book: () => ({ ...BOOK, items: [reverted], total: 1 }) })

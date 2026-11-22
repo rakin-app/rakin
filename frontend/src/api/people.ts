@@ -254,7 +254,7 @@ export function returnToGym(id: string, membership?: MembershipStart): Promise<P
 
 /** Why the owner cannot delete someone (#256), each with how to clear it: money the gym
  * kept of theirs, a proof waiting, a charge still owed, their staff role, or a dependent. */
-export const DELETION_REFUSALS = ['payment', 'pending', 'owes', 'staff', 'guardian'] as const
+export const DELETION_REFUSALS = ['payment', 'pending', 'owes', 'moved', 'staff', 'guardian'] as const
 export type DeletionRefusal = (typeof DELETION_REFUSALS)[number]
 
 /** Whether they can be deleted; `amount_clp` is the money a `payment` or `owes` is about. */

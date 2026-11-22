@@ -327,7 +327,8 @@ class Return(BaseModel):
 # first; `pending`, a proof of theirs waits for review, rejected first; `owes`, a charge
 # of theirs is still owed, voided first; `staff`, they are on the gym's staff or coached
 # here; `guardian`, they answer for a dependent here.
-ForgetCode = Literal["payment", "pending", "owes", "staff", "guardian"]
+# `moved`: a payment of theirs moved to a sibling (#280), whose entry names it.
+ForgetCode = Literal["payment", "pending", "owes", "moved", "staff", "guardian"]
 
 
 class ForgetConflict(BaseModel):

@@ -24,11 +24,14 @@ import {
   freezeMembership,
   membershipLedgerQuery,
   membershipsQuery,
+  moveRefused,
+  moveTargetsQuery,
   personQuery,
   reactivateMembership,
   reactivationQuery,
   reactivationRefused,
   recordAdjustment,
+  recordMove,
   paymentVoidRefused,
   recordPayment,
   recordPaymentAhead,
@@ -48,6 +51,7 @@ import {
   type Membership,
   type MembershipLedger,
   type Method,
+  type MoveTarget,
   type OpenPeriod,
   type Person,
   type RecordedAdjustment,
@@ -2130,7 +2134,207 @@ function ChangeAmountForm({
 }
 
 /** A payment line's fixes, in the design's order (docs/design/billing-corrections.md, section 5). */
-const PAYMENT_FIXES = ['voidPayment', 'refund'] as const
+const PAYMENT_FIXES = ['move', 'voidPayment', 'refund'] as const
+/** A payment moved in (#280) is a correction: moved again or refunded, never undone as a mistake. */
+const MOVED_PAYMENT_FIXES = ['move', 'refund'] as const
+
+/** What a refused "Mover pago" says (#280). */
+function moveRefusal(error: Error): string {
+  return copy.moveRefused[moveRefused(error) ?? 'failed']
+}
+
+/** A period a payment may move to, as the form lists it: a sibling's names them. */
+function targetLabel(target: MoveTarget, personId: string): string {
+  const form = copy.moveForm
+  const label = form.option(
+    monthName(target.period_start),
+    target.plan_name,
+    target.person_id === personId ? null : target.person_name,
+    clp(target.outstanding_clp),
+  )
+  return target.pending ? form.pendingOption(label) : label
+}
+
+/** "Mover a otro mes o plan" (#280): all or part of a payment recorded on the wrong month,
+ * plan or sibling, moved to a period that still owes. Neither income nor a refund, and no
+ * email. A second step names both plans when it leaves this one; a payment that carried
+ * credit moves only as a whole. */
+function MoveForm({
+  personId,
+  membership,
+  payment,
+  ledger,
+  onCancel,
+  onDone,
+}: {
+  personId: string
+  membership: Membership
+  payment: RefundablePayment
+  ledger: MembershipLedger
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.moveForm
+  const ids = { target: useId(), amount: useId(), amountHint: useId(), reason: useId(), reasonHint: useId() }
+  const offered = useQuery(moveTargetsQuery(payment.id))
+  const [targetId, setTargetId] = useState<string | null>(null)
+  const [amount, setAmount] = useState<string | null>(null)
+  const [reason, setReason] = useState('')
+  const [checked, setChecked] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+
+  const movable = offered.data?.movable_clp ?? payment.refundable_clp
+  const wholeOnly = offered.data?.whole_only ?? false
+  const targets = offered.data?.targets ?? []
+  const target = targets.find((t) => t.billing_period_id === targetId) ?? targets.find((t) => !t.pending)
+  const value = wholeOnly ? movable : Number((amount ?? String(movable)).replace(/\D/g, ''))
+  const amountOk = value > 0 && value <= movable
+  const reasonOk = reason.trim() !== ''
+  const month = monthName(payment.period_start)
+  const owed = ledger.periods.find((p) => p.id === payment.billing_period_id)?.outstanding_clp ?? 0
+  // Another plan or person: this plan's balance carries it no more.
+  const leaves = target !== undefined && target.membership_id !== membership.id
+  const from = `${month} · ${membership.plan_name}`
+  const to = target
+    ? [monthName(target.period_start), target.plan_name, target.person_id === personId ? null : target.person_name]
+        .filter(Boolean)
+        .join(' · ')
+    : ''
+
+  const moved = useSubmit({
+    offline: 'refuse',
+    mutationFn: () =>
+      recordMove({
+        payment_id: payment.id,
+        billing_period_id: target!.billing_period_id,
+        amount_clp: value,
+        reason: reason.trim(),
+      }),
+    onSuccess: async () => {
+      onDone(form.done(clp(value), month, to))
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    },
+  })
+
+  if (offered.isPending) return <p className="member__detail">{form.loading}</p>
+  if (offered.isError) return <Banner tone="error">{form.failed}</Banner>
+  // Nowhere to go: no period owing, or each with a proof waiting, reviewed first.
+  if (!targets.some((t) => !t.pending)) {
+    return (
+      <div className={cardClass({}, 'member__form')}>
+        <p className="member__detail">{targets.length === 0 ? form.none : form.allPending}</p>
+        <div className="member__form-actions">
+          <Button onClick={onCancel}>{form.cancel}</Button>
+        </div>
+      </div>
+    )
+  }
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    if (!amountOk || !reasonOk || !target || target.pending) return
+    if (leaves && !confirming) setConfirming(true)
+    else moved.mutate()
+  }
+
+  const landing = target ? Math.max(target.outstanding_clp - value, 0) : 0
+  const credit = target ? Math.max(value - target.outstanding_clp, 0) : 0
+
+  return (
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+      <p className="member__detail">{form.intro}</p>
+      <label htmlFor={ids.target} className="member__label">
+        {form.target}
+      </label>
+      <Select
+        id={ids.target}
+        value={target?.billing_period_id ?? ''}
+        disabled={confirming}
+        onChange={(e) => setTargetId(e.target.value)}
+      >
+        {targets.map((t) => (
+          <option key={t.billing_period_id} value={t.billing_period_id} disabled={t.pending}>
+            {targetLabel(t, personId)}
+          </option>
+        ))}
+      </Select>
+
+      <label htmlFor={ids.amount} className="member__label">
+        {form.amount}
+      </label>
+      <Input
+        id={ids.amount}
+        inputMode="numeric"
+        value={wholeOnly ? String(movable) : (amount ?? String(movable))}
+        readOnly={wholeOnly || confirming}
+        aria-describedby={ids.amountHint}
+        aria-invalid={checked && !amountOk}
+        onChange={(e) => setAmount(e.target.value)}
+      />
+      <span id={ids.amountHint} className="member__detail">
+        {wholeOnly ? form.wholeOnly(clp(movable)) : form.amountHint(clp(movable))}
+      </span>
+      {checked && !amountOk && (
+        <Banner tone="error">
+          {value > movable ? form.beyond(clp(movable)) : form.amountNeeded}
+        </Banner>
+      )}
+
+      <label htmlFor={ids.reason} className="member__label">
+        {form.reason}
+      </label>
+      <Input
+        id={ids.reason}
+        type="text"
+        maxLength={500}
+        value={reason}
+        readOnly={confirming}
+        aria-describedby={ids.reasonHint}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <span id={ids.reasonHint} className="member__detail">
+        {form.reasonHint}
+      </span>
+      {checked && !reasonOk && (
+        <Banner tone="error">
+          {form.reasonNeeded}
+        </Banner>
+      )}
+
+      <FixPreview
+        month={month}
+        owed={[owed, owed + (amountOk ? value : 0)]}
+        balance={[ledger.balance_clp, ledger.balance_clp + (leaves && amountOk ? value : 0)]}
+      />
+      {target && amountOk && (
+        <div className="member__fix-preview">
+          <span className="member__detail">
+            {copy.fix.owed(to, clp(target.outstanding_clp), clp(landing))}
+          </span>
+          {credit > 0 && <span className="member__detail">{form.credit(clp(credit))}</span>}
+        </div>
+      )}
+      {confirming && <Banner tone="info">{form.confirmPlan(clp(value), from, to)}</Banner>}
+      {moved.error && (
+        <Banner tone="error">
+          {moveRefusal(moved.error)}
+        </Banner>
+      )}
+
+      <div className="member__form-actions">
+        <Button disabled={moved.isPending} onClick={confirming ? () => setConfirming(false) : onCancel}>
+          {confirming ? form.back : form.cancel}
+        </Button>
+        <Button type="submit" variant="primary" disabled={moved.isPending} busy={moved.isPending}>
+          {moved.isPending ? form.working : confirming ? form.confirm(clp(value)) : form.submit(clp(value))}
+        </Button>
+      </div>
+    </form>
+  )
+}
 
 /** What a refused "Anular pago" says (#281). */
 function paymentVoidRefusal(error: Error): string {
@@ -2431,11 +2635,20 @@ function Ledger({
     return (
       <Fixes
         title={copy.fix.payment(monthName(payment.period_start))}
-        fixes={PAYMENT_FIXES}
+        fixes={entry.purpose === 'move' ? MOVED_PAYMENT_FIXES : PAYMENT_FIXES}
         label={(f) => copy.fix[f]}
       >
         {(fix) =>
-          fix === 'voidPayment' ? (
+          fix === 'move' ? (
+            <MoveForm
+              personId={personId}
+              membership={membership}
+              payment={payment}
+              ledger={ledger}
+              onCancel={cancel}
+              onDone={finish}
+            />
+          ) : fix === 'voidPayment' ? (
             <VoidPaymentForm personId={personId} payment={payment} ledger={ledger} onCancel={cancel} onDone={finish} />
           ) : (
             <RefundForm payments={[payment]} ledger={ledger} onCancel={cancel} onDone={finish} />
@@ -2467,6 +2680,7 @@ function Ledger({
               <Entry
                 key={entry.id}
                 entry={entry}
+                membershipId={membership.id}
                 unpaid={entry.billing_period_id !== null && open.has(entry.billing_period_id)}
                 paidClp={entry.billing_period_id === null ? 0 : (open.get(entry.billing_period_id) ?? 0)}
                 fix={
@@ -2623,6 +2837,10 @@ function correctionTitle(c: Correction): string {
       if (c.purpose === 'void') return (c.plan_void ? words.planVoid : words.void)(month)
       if (c.purpose === 'restore') return words.restore(month)
       if (c.purpose === 'mistake') return words.paymentVoid(month)
+      if (c.purpose === 'move') {
+        const other = c.other_period_start ? monthName(c.other_period_start) : ''
+        return c.moved === 'in' ? words.movedIn(month, other) : words.movedOut(month, other)
+      }
       // In the member's favour when it left the period owing less.
       return words.adjustment((c.after?.outstanding_clp ?? 0) < (c.before?.outstanding_clp ?? 0), month)
   }
@@ -2651,14 +2869,17 @@ function Entry({
   entry,
   unpaid,
   paidClp,
+  membershipId,
   fix,
 }: {
   entry: TimelineEntry
   unpaid: boolean
   paidClp: number
+  // The Libro's plan: a payment moved to or from another names that one (#280).
+  membershipId?: string
   fix?: LineFix | null
 }) {
-  const { title, detail, tone } = describeEntry(entry, unpaid, paidClp)
+  const { title, detail, tone } = describeEntry(entry, unpaid, paidClp, membershipId)
   // A voided charge stays, struck through and labelled, not hidden (#256).
   const struck = entry.voided ? ' member__entry--voided' : ''
   return (
@@ -2685,12 +2906,23 @@ function entryAmount(entry: TimelineEntry): string {
 type Tone = 'paid' | 'owed' | 'muted' | 'rejected'
 
 /** What a ledger row says: `Pago septiembre`, `transferencia · validó Martín · 2 sep`. */
-function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { title: string; detail: string; tone: Tone } {
+function describeEntry(
+  entry: TimelineEntry,
+  unpaid: boolean,
+  paidClp = 0,
+  membershipId?: string,
+): { title: string; detail: string; tone: Tone } {
   const words = copy.ledger
   const month = entry.period_start ? monthName(entry.period_start) : ''
   const method = entry.method ? words.method[entry.method] : null
   const day = shortDay(entry.validated_at ?? entry.created_at)
   const join = (...parts: (string | null)[]) => parts.filter(Boolean).join(' · ')
+  // A payment moved (#280): the other half's month, and its plan when it is another one.
+  const moved = entry.purpose === 'move' && entry.moved ? entry.moved : null
+  const elsewhere =
+    moved && membershipId !== undefined && moved.membership_id !== membershipId
+      ? words.movedElsewhere(moved.plan_name, entry.moved!.person_name)
+      : null
 
   switch (entry.kind) {
     case 'charge':
@@ -2721,6 +2953,14 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { ti
             ? words.rejected
             : entry.validated_by_name && words.validatedBy(entry.validated_by_name)
       const tone = entry.status === 'validated' ? 'paid' : entry.status === 'rejected' ? 'rejected' : 'muted'
+      // Moved in from another month, plan or sibling (#280): "Movido de noviembre".
+      if (moved) {
+        return {
+          title: `${words.payment(month)} · ${words.movedFrom(monthName(moved.period_start))}`,
+          detail: join(elsewhere, entry.note, review, day),
+          tone,
+        }
+      }
       return { title: words.payment(month), detail: join(method, review, day), tone }
     }
     case 'adjustment':
@@ -2743,6 +2983,12 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { ti
       if (entry.purpose === 'mistake') {
         const by = entry.validated_by_name && words.validatedBy(entry.validated_by_name)
         return { title: words.paymentVoid(month), detail: join(words.mistake, entry.note, by, day), tone: 'muted' }
+      }
+      // Moved out to another month, plan or sibling (#280): no money left. "Movido a diciembre".
+      if (entry.purpose === 'move') {
+        const by = entry.validated_by_name && words.validatedBy(entry.validated_by_name)
+        const title = moved ? words.movedTo(monthName(moved.period_start)) : words.movedTo('')
+        return { title: `${words.payment(month)} · ${title}`, detail: join(elsewhere, entry.note, by, day), tone: 'muted' }
       }
       return { title: words.refund(month), detail: join(method, entry.note, day), tone: 'muted' }
   }

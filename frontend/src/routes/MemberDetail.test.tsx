@@ -1187,9 +1187,9 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
 
-    // "Anular pago" first (#281), then the refund.
+    // "Mover" first (#280), then "Anular pago" (#281), then the refund.
     const chips = within(fixes).getAllByRole('button').filter((b) => b.hasAttribute('aria-pressed'))
-    expect(chips.map((b) => b.textContent)).toEqual([copy.fix.voidPayment, copy.fix.refund])
+    expect(chips.map((b) => b.textContent)).toEqual([copy.fix.move, copy.fix.voidPayment, copy.fix.refund])
     await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.refund }))
     const form = within(fixes).getByRole('form', { name: copy.refundForm.title })
     const amount = within(form).getByLabelText(copy.refundForm.amount)
@@ -1234,6 +1234,7 @@ describe('Ficha de alumno', () => {
     })
     renderAt(PATH)
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.voidPayment }))
     const form = within(fixes).getByRole('form', { name: copy.voidPaymentForm.title })
 
     // A reason first; what it does, as for any fix.
@@ -1262,6 +1263,7 @@ describe('Ficha de alumno', () => {
     })
     renderAt(PATH)
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.voidPayment }))
     const form = within(fixes).getByRole('form', { name: copy.voidPaymentForm.title })
     await userEvent.type(within(form).getByLabelText(copy.voidPaymentForm.reason), 'nunca llegó')
     await userEvent.click(within(form).getByRole('button', { name: copy.voidPaymentForm.submit('$45.000') }))
@@ -1302,11 +1304,244 @@ describe('Ficha de alumno', () => {
     expect(first).toHaveTextContent('−$45.000')
 
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.voidPayment }))
     const form = within(fixes).getByRole('form', { name: copy.voidPaymentForm.title })
     await userEvent.type(within(form).getByLabelText(copy.voidPaymentForm.reason), 'x')
     await userEvent.click(within(form).getByRole('button', { name: copy.voidPaymentForm.submit('$45.000') }))
     await userEvent.click(within(form).getByRole('button', { name: copy.voidPaymentForm.confirm('$45.000') }))
     expect(await within(form).findByRole('alert')).toHaveTextContent(copy.voidPaymentRefused.nothing_left)
+  })
+
+  /** "Mover a otro mes o plan" (#280): October of this plan, and a sibling's November. */
+  const TARGETS = {
+    movable_clp: 45000,
+    whole_only: false,
+    targets: [
+      {
+        membership_id: 'm-felipe',
+        billing_period_id: 'p-oct',
+        person_id: 'felipe',
+        person_name: 'Felipe Díaz',
+        plan_name: 'Mensual adultos',
+        period_start: '2026-10-30',
+        period_end: '2026-11-29',
+        outstanding_clp: 45000,
+        pending: false,
+      },
+      {
+        membership_id: 'm-tomas',
+        billing_period_id: 'p-tomas',
+        person_id: 'kid',
+        person_name: 'Tomás Díaz',
+        plan_name: 'Infantil',
+        period_start: '2026-11-05',
+        period_end: '2026-12-04',
+        outstanding_clp: 30000,
+        pending: false,
+      },
+      {
+        membership_id: 'm-felipe',
+        billing_period_id: 'p-nov',
+        person_id: 'felipe',
+        person_name: 'Felipe Díaz',
+        plan_name: 'Mensual adultos',
+        period_start: '2026-11-30',
+        period_end: '2026-12-29',
+        outstanding_clp: 45000,
+        pending: true,
+      },
+    ],
+  }
+
+  const moveStub = (moved?: Answer) =>
+    stubApi({
+      extra: (path, method) => {
+        if (path === '/api/ledger/moves/targets') return { body: TARGETS }
+        if (path === '/api/ledger/moves' && method === 'POST') {
+          return (
+            moved ?? {
+              status: 201,
+              body: {
+                from_period: { outstanding_clp: 20000, closed: false },
+                to_period: { outstanding_clp: 25000, closed: false },
+                credit: null,
+              },
+            }
+          )
+        }
+        return undefined
+      },
+    })
+
+  it('moves part of a payment to another month of the plan, with no second step (#280)', async () => {
+    const calls = moveStub()
+    renderAt(PATH)
+    const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    const form = within(fixes).getByRole('form', { name: copy.moveForm.title })
+
+    // Its own plan's October first; a period with a proof waiting is listed, not chosen.
+    const target = await within(form).findByLabelText(copy.moveForm.target)
+    expect(target).toHaveDisplayValue(copy.moveForm.option('octubre', 'Mensual adultos', null, '$45.000'))
+    const waiting = within(form).getByRole('option', {
+      name: copy.moveForm.pendingOption(copy.moveForm.option('noviembre', 'Mensual adultos', null, '$45.000')),
+    })
+    expect(waiting).toBeDisabled()
+
+    const amount = within(form).getByLabelText(copy.moveForm.amount)
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '20000')
+    await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.submit('$20.000') }))
+    expect(within(form).getByRole('alert')).toHaveTextContent(copy.moveForm.reasonNeeded)
+    // What it does: September owes it again, October owes less; this plan's balance stays.
+    expect(within(form).getByText(copy.fix.owed('septiembre', '$0', '$20.000'))).toBeInTheDocument()
+    expect(within(form).getByText(copy.fix.owed('octubre · Mensual adultos', '$45.000', '$25.000'))).toBeInTheDocument()
+    expect(within(form).getByText(copy.fix.balance('$45.000', '$45.000'))).toBeInTheDocument()
+
+    await userEvent.type(within(form).getByLabelText(copy.moveForm.reason), ' era de octubre ')
+    await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.submit('$20.000') }))
+    expect(
+      await within(await libro()).findByText(copy.moveForm.done('$20.000', 'septiembre', 'octubre · Mensual adultos')),
+    ).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/ledger/moves',
+        body: { payment_id: 'pay-sep', billing_period_id: 'p-oct', amount_clp: 20000, reason: 'era de octubre' },
+      },
+    ])
+  })
+
+  it("names both plans before moving a payment to a sibling's, and refuses more than is left (#280)", async () => {
+    const calls = moveStub()
+    renderAt(PATH)
+    const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    const form = within(fixes).getByRole('form', { name: copy.moveForm.title })
+    await userEvent.selectOptions(
+      await within(form).findByLabelText(copy.moveForm.target),
+      copy.moveForm.option('noviembre', 'Infantil', 'Tomás Díaz', '$30.000'),
+    )
+    const amount = within(form).getByLabelText(copy.moveForm.amount)
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '50000')
+    await userEvent.type(within(form).getByLabelText(copy.moveForm.reason), 'era de Tomás')
+    await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.submit('$50.000') }))
+    expect(within(form).getByRole('alert')).toHaveTextContent(copy.moveForm.beyond('$45.000'))
+
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '45000')
+    // Leaving this plan: its balance carries it no more, and the rest lands as credit.
+    expect(within(form).getByText(copy.fix.balance('$45.000', '$90.000'))).toBeInTheDocument()
+    expect(within(form).getByText(copy.moveForm.credit('$15.000'))).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.submit('$45.000') }))
+    const to = 'noviembre · Infantil · Tomás Díaz'
+    expect(within(form).getByText(copy.moveForm.confirmPlan('$45.000', 'septiembre · Mensual adultos', to))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.confirm('$45.000') }))
+    expect(await within(await libro()).findByText(copy.moveForm.done('$45.000', 'septiembre', to))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([
+      { payment_id: 'pay-sep', billing_period_id: 'p-tomas', amount_clp: 45000, reason: 'era de Tomás' },
+    ])
+  })
+
+  it('moves a payment that carried credit only whole, and says why a move was refused (#280)', async () => {
+    stubApi({
+      extra: (path, method) => {
+        if (path === '/api/ledger/moves/targets') return { body: { ...TARGETS, whole_only: true } }
+        if (path === '/api/ledger/moves' && method === 'POST') {
+          return { status: 409, body: { detail: { code: 'pending', message: 'a proof waits' } } }
+        }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+    const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    const form = within(fixes).getByRole('form', { name: copy.moveForm.title })
+    expect(await within(form).findByText(copy.moveForm.wholeOnly('$45.000'))).toBeInTheDocument()
+    expect(within(form).getByLabelText(copy.moveForm.amount)).toHaveAttribute('readonly')
+    await userEvent.type(within(form).getByLabelText(copy.moveForm.reason), 'x')
+    await userEvent.click(within(form).getByRole('button', { name: copy.moveForm.submit('$45.000') }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent(copy.moveRefused.pending)
+  })
+
+  it('says why a payment has nowhere to move: nothing owing, or each with a proof waiting (#280)', async () => {
+    stubApi({
+      extra: (path) =>
+        path === '/api/ledger/moves/targets' ? { body: { ...TARGETS, targets: [TARGETS.targets[2]] } } : undefined,
+    })
+    renderAt(PATH)
+    const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    expect(await within(fixes).findByText(copy.moveForm.allPending)).toBeInTheDocument()
+    expect(within(fixes).queryByRole('form', { name: copy.moveForm.title })).toBeNull()
+  })
+
+  it('reads both halves of a payment moved, naming the other month and plan (#280)', async () => {
+    const moved = { period_start: '2026-10-30', membership_id: 'm-felipe', plan_name: 'Mensual adultos', person_id: 'felipe', person_name: 'Felipe Díaz' }
+    stubApi({
+      ledger: {
+        ...LEDGER,
+        entries: [
+          {
+            ...LEDGER.entries[1]!,
+            id: 'out',
+            kind: 'refund',
+            method: null,
+            note: 'era de octubre',
+            refund_of: 'pay-sep',
+            purpose: 'move',
+            moved: { ...moved, billing_period_id: 'p-oct' },
+          },
+          {
+            ...LEDGER.entries[1]!,
+            id: 'in',
+            billing_period_id: 'p-tomas',
+            period_start: '2026-11-05',
+            note: 'era de Tomás',
+            purpose: 'move',
+            moved: {
+              billing_period_id: 'p-x',
+              period_start: '2026-09-30',
+              membership_id: 'm-tomas',
+              plan_name: 'Infantil',
+              person_id: 'kid',
+              person_name: 'Tomás Díaz',
+            },
+          },
+          ...LEDGER.entries,
+        ],
+      },
+    })
+    renderAt(PATH)
+    const [out, into] = within(await libro()).getAllByRole('listitem')
+    expect(out).toHaveTextContent(`${copy.ledger.payment('septiembre')} · ${copy.ledger.movedTo('octubre')}`)
+    expect(out).toHaveTextContent('era de octubre')
+    expect(out).toHaveTextContent('−$45.000')
+    expect(out).not.toHaveTextContent('Infantil')
+    expect(into).toHaveTextContent(`${copy.ledger.payment('noviembre')} · ${copy.ledger.movedFrom('septiembre')}`)
+    expect(into).toHaveTextContent(copy.ledger.movedElsewhere('Infantil', 'Tomás Díaz'))
+  })
+
+  it('names a move in "Correcciones" by both months (#280)', async () => {
+    stubApi({
+      corrections: [
+        {
+          id: 'a-move',
+          at: '2026-11-09T12:00:00Z',
+          action: 'ledger_corrected',
+          purpose: 'move',
+          plan_void: false,
+          reason: 'era de octubre',
+          actor_name: 'Martín',
+          period_start: '2026-09-30',
+          plan_name: 'Mensual adultos',
+          before: { outstanding_clp: 0, balance_clp: 45000 },
+          after: { outstanding_clp: 45000, balance_clp: 45000 },
+          moved: 'out',
+          other_period_start: '2026-10-30',
+        },
+      ],
+    })
+    renderAt(PATH)
+    expect(await screen.findByText(copy.corrections.movedOut('septiembre', 'octubre'), { exact: false })).toBeInTheDocument()
   })
 
   it('says so when the payment has less left to give back', async () => {

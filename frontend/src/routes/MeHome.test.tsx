@@ -634,6 +634,41 @@ describe('Mi página', () => {
     ])
   })
 
+  it('lists a payment moved to another month by both months, never with the reason (#280)', async () => {
+    const at = { claimed_at: null, validated_at: `${YEAR}-11-04T15:00:00Z`, created_at: `${YEAR}-11-04T15:00:00Z` }
+    stubPage(
+      diego({
+        payments: [
+          payment({
+            id: 'in',
+            kind: 'payment',
+            amount_clp: 45000,
+            period_start: `${YEAR}-12-10`,
+            purpose: 'move',
+            moved_period_start: `${YEAR}-11-10`,
+            ...at,
+          }),
+          payment({
+            id: 'out',
+            kind: 'refund',
+            amount_clp: 45000,
+            period_start: `${YEAR}-11-10`,
+            purpose: 'move',
+            moved_period_start: `${YEAR}-12-10`,
+            ...at,
+          }),
+        ],
+      }),
+    )
+    renderMe()
+
+    const history = within(await screen.findByRole('region', { name: copy.history.title }))
+    expect(history.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      `Diciembre${copy.history.movedFrom('noviembre')} · 4 nov$45.000`,
+      `${copy.history.movedOut('noviembre', 'diciembre')}movido 4 nov−$45.000`,
+    ])
+  })
+
   it("shows a rejection's note, and whose payment it was", async () => {
     stubPage(
       diego({
