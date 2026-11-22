@@ -65,7 +65,11 @@ def create(client: TestClient, gym: uuid.UUID, **fields: Any) -> Any:
 
 
 def entered(body: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in body.items() if k not in ("id", "left_on", "created_at", "updated_at")}
+    return {
+        k: v
+        for k, v in body.items()
+        if k not in ("id", "left_on", "left_with", "created_at", "updated_at")
+    }
 
 
 def people_with_rut(db: Database, rut: str) -> list[asyncpg.Record]:

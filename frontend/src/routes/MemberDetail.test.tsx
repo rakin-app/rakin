@@ -4778,7 +4778,8 @@ describe('Deshacer baja (#285)', () => {
     expect(within(confirm).getByText(form.confirmTitle)).toBeInTheDocument()
     expect(within(confirm).getByText(form.total('$90.000'))).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'POST')).toEqual([])
-    await userEvent.click(within(confirm).getByRole('button', { name: form.submit }))
+    // A second "Sí, …" naming what it bills (#549), as the other money corrections ask.
+    await userEvent.click(within(confirm).getByRole('button', { name: form.confirm('$90.000') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(form.done('$90.000'))
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
@@ -4796,7 +4797,7 @@ describe('Deshacer baja (#285)', () => {
     await userEvent.type(within(opened).getByLabelText(form.reason), 'fue un error')
     await userEvent.click(within(opened).getByRole('button', { name: form.next }))
     expect(within(opened).getByText(form.period('noviembre', '$45.000'))).toBeInTheDocument()
-    await userEvent.click(within(opened).getByRole('button', { name: form.submit }))
+    await userEvent.click(within(opened).getByRole('button', { name: form.confirm('$45.000') }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(form.done('$45.000'))
     expect(calls.filter((c) => c.method === 'POST')[0]?.body).toEqual({ reason: 'fue un error', bill_from: 'today' })
@@ -4836,6 +4837,74 @@ describe('Deshacer baja (#285)', () => {
     await userEvent.click(await planAction(card, copy.fix.plan))
     expect(within(card).getByRole('group', { name: copy.fix.plan })).toBeInTheDocument()
     expect(within(card).queryByRole('button', { name: copy.uncancelPlan })).not.toBeInTheDocument()
+  })
+})
+
+describe('Deshacer la baja, in one step (#549)', () => {
+  const form = copy.uncancelForm
+  const CANCELLED: Membership = { ...MONTHLY, status: 'cancelled' }
+  const NOTHING = { bills_from: '2026-11-30', periods: [], total_clp: 0 }
+  const LEFT: Person = { ...FELIPE, left_on: '2026-11-10', left_with: 'm-felipe' }
+  const actions = () => screen.findByRole('region', { name: copy.exitLabel })
+
+  function stubLeft(left: Person = LEFT, permissions?: string[]) {
+    let person = left
+    return stubApi({
+      memberships: [CANCELLED],
+      extra: (path, method) => {
+        if (path === '/api/me/role' && permissions) {
+          return { body: { role: 'admin', permissions, account_holder: false, uses_grades: true } }
+        }
+        if (path === '/api/people/felipe' && method === 'GET') return { body: person }
+        if (path !== '/api/memberships/m-felipe/uncancel') return undefined
+        if (method === 'GET') return { body: { status: 'active', returns: true, last: NOTHING, today: NOTHING } }
+        person = FELIPE
+        return { body: MONTHLY }
+      },
+    })
+  }
+
+  it('offers "Deshacer la baja" beside Reactivar, bringing the person and the plan back together', async () => {
+    const calls = stubLeft()
+    renderAt(PATH)
+
+    const exit = await actions()
+    expect(within(exit).getByRole('button', { name: copy.reactivate })).toBeInTheDocument()
+    await userEvent.click(within(exit).getByRole('button', { name: copy.undoLeave }))
+    const opened = screen.getByRole('form', { name: form.title })
+    // It says what comes back: them on the list, and this same plan.
+    expect(await within(opened).findByText(form.returns)).toBeInTheDocument()
+    await userEvent.type(within(opened).getByLabelText(form.reason), 'fue un error')
+    await userEvent.click(within(opened).getByRole('button', { name: form.next }))
+
+    const confirm = screen.getByRole('form', { name: form.title })
+    expect(within(confirm).getByText(form.returns)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(confirm).getByRole('button', { name: form.submit }))
+
+    expect(await within(await actions()).findByText(`${form.doneNothing} ${form.returned}`)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/memberships/m-felipe/uncancel', body: { reason: 'fue un error', bill_from: 'last' } },
+    ])
+    // Back on the list: "Dar de baja" again, and no new plan was started.
+    expect(await within(await actions()).findByRole('button', { name: copy.leave })).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1)
+  })
+
+  it('is not offered to someone who records money but does not manage members', async () => {
+    stubLeft(LEFT, ['money_read', 'money_write', 'gym_setup'])
+    renderAt(PATH)
+    const exit = await actions()
+    expect(within(exit).getByRole('button', { name: copy.reactivate })).toBeInTheDocument()
+    expect(within(exit).queryByRole('button', { name: copy.undoLeave })).not.toBeInTheDocument()
+  })
+
+  it('is not offered when their Dar de baja ended no plan it can bring back', async () => {
+    stubLeft({ ...LEFT, left_with: null })
+    renderAt(PATH)
+    const exit = await actions()
+    expect(within(exit).getByRole('button', { name: copy.reactivate })).toBeInTheDocument()
+    expect(within(exit).queryByRole('button', { name: copy.undoLeave })).not.toBeInTheDocument()
   })
 })
 

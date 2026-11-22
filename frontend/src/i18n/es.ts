@@ -1248,6 +1248,8 @@ export const es = {
         failed: 'No pudimos darlo de baja. Inténtalo de nuevo.',
       },
       reactivate: 'Reactivar',
+      // A mistaken Dar de baja undone in one step (#549): the person and their plan, as before.
+      undoLeave: 'Deshacer la baja',
       returnForm: {
         title: 'Reactivar',
         get intro() {
@@ -1741,8 +1743,17 @@ export const es = {
         period: (month: string, amount: string) => `${month} · ${amount}`,
         total: (amount: string) => `Total ${amount}`,
         back: 'Volver',
-        submit: 'Deshacer baja',
+        // The second step's button (#549, as Anular pago's): what it does, and what it bills.
+        submit: 'Sí, deshacer la baja',
+        confirm: (total: string) => `Sí, deshacer y cobrar ${total}`,
         working: 'Deshaciendo…',
+        // Their Dar de baja ended this plan: both come back together (#549).
+        get returns() {
+          return `También vuelve a la lista de ${w.members}, con este mismo plan y su fecha de pago: no se crea un plan nuevo.`
+        },
+        get returned() {
+          return `Vuelve a la lista de ${w.members}.`
+        },
         done: (total: string) => `Baja deshecha. Se cobraron ${total}.`,
         doneNothing: 'Baja deshecha. El plan vuelve a estar activo.',
         doneLapsed: 'Baja deshecha. El plan quedó caducado: reactívalo cuando pague.',

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { holdsAccount, managesGym, type Access } from '../api/me'
 import type { Person } from '../api/member'
 import { deletePerson, deletionQuery, deletionRefused, leaveGym, returnToGym } from '../api/people'
@@ -17,15 +17,28 @@ import { Banner, Card, cardClass } from '../components/Card'
 
 const copy = t.admin.member
 
-type Open = 'leave' | 'return' | 'remove' | null
+type Open = 'leave' | 'return' | 'undoLeave' | 'remove' | null
 
 /**
  * The ways out of the gym (#157), set apart at the foot of the ficha: "Dar de baja" and
  * "Reactivar" for the owner and admins, since they end or start what a member is
  * charged; "Eliminar" for the owner alone. A coach gets none of them. The record is
  * edited in "Datos" (`PersonData`).
+ *
+ * Beside "Reactivar", "Deshacer la baja" when their Dar de baja ended a plan it can bring
+ * back (#549): `undoLeave`, the ficha's form for it, which closes with what it did. It is
+ * the way back from a mistake, the person and that plan as before; "Reactivar" is for
+ * coming back later, on a new plan if any.
  */
-export function PersonActions({ person, access }: { person: Person; access: Access | null | undefined }) {
+export function PersonActions({
+  person,
+  access,
+  undoLeave,
+}: {
+  person: Person
+  access: Access | null | undefined
+  undoLeave?: (close: (message: string | null) => void) => ReactNode
+}) {
   const [open, setOpen] = useState<Open>(null)
   const [done, setDone] = useState<string | null>(null)
   const manages = managesGym(access)
@@ -44,9 +57,16 @@ export function PersonActions({ person, access }: { person: Person; access: Acce
     <section className="member__section member__exit" aria-label={copy.exitLabel}>
       <div className="member__actions">
         {person.left_on ? (
-          <Button aria-expanded={open === 'return'} onClick={() => toggle('return')}>
-            {copy.reactivate}
-          </Button>
+          <>
+            {undoLeave && (
+              <Button variant="primary" aria-expanded={open === 'undoLeave'} onClick={() => toggle('undoLeave')}>
+                {copy.undoLeave}
+              </Button>
+            )}
+            <Button aria-expanded={open === 'return'} onClick={() => toggle('return')}>
+              {copy.reactivate}
+            </Button>
+          </>
         ) : (
           <Button variant="danger" aria-expanded={open === 'leave'} onClick={() => toggle('leave')}>
             {copy.leave}
@@ -65,6 +85,7 @@ export function PersonActions({ person, access }: { person: Person; access: Acce
       )}
       {open === 'leave' && <LeaveForm person={person} onCancel={() => setOpen(null)} onDone={finish} />}
       {open === 'return' && <ReturnForm person={person} onCancel={() => setOpen(null)} onDone={finish} />}
+      {open === 'undoLeave' && person.left_on && undoLeave?.(finish)}
       {open === 'remove' && (
         <RemoveForm
           person={person}

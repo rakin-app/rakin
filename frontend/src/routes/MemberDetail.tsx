@@ -69,7 +69,7 @@ import {
   type RefundablePayment,
   type TimelineEntry,
 } from '../api/member'
-import { myAccessQuery, readsLedger, type Access } from '../api/me'
+import { holds, myAccessQuery, readsLedger, type Access } from '../api/me'
 import { welcomeQuery } from '../api/people'
 import { remindersQuery } from '../api/reminders'
 import { useGymToday } from '../api/sessions'
@@ -249,7 +249,17 @@ export function MemberDetail() {
           <PersonData person={person.data} />
           <PersonConsent person={person.data} />
           <PersonWelcome person={person.data} access={access.data} />
-          <PersonActions person={person.data} access={access.data} />
+          <PersonActions
+            person={person.data}
+            access={access.data}
+            // A mistaken Dar de baja undone in one step, their plan with them (#549).
+            undoLeave={
+              // It writes money and returns them to the list: both permissions, as the API asks.
+              holds(access.data, 'money_write') && holds(access.data, 'members_manage') && person.data.left_with
+                ? (close) => <ReactivateForm mode="uncancel" membership={{ id: person.data.left_with ?? '' }} onCancel={() => close(null)} onDone={close} />
+                : undefined
+            }
+          />
         </div>
       </Grid>
     </Shell>
@@ -1507,7 +1517,7 @@ function ReactivateForm({
   onCancel,
   onDone,
 }: {
-  membership: Membership
+  membership: Pick<Membership, 'id'>
   mode?: BringBack
   onCancel: () => void
   onDone: (message: string) => void
@@ -1519,6 +1529,8 @@ function ReactivateForm({
   const quote = useQuery(bringBackQuery(membership.id, mode))
   // Back Lapsed (#285): nothing billed, so no choice of from when.
   const lapsed = quote.data?.status === 'lapsed'
+  // Their Dar de baja ended it: the person comes back on the list with it (#549).
+  const returns = uncancel && quote.data?.returns === true
   const [billFrom, setBillFrom] = useState<BillFrom>('last')
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
@@ -1531,8 +1543,8 @@ function ReactivateForm({
     mutationFn: () => bringBack(membership.id, mode, reason.trim(), billFrom),
     onSuccess: async () => {
       const total = bill?.total_clp ?? 0
-      if (lapsed) onDone(copy.uncancelForm.doneLapsed)
-      else onDone(total > 0 ? form.done(clp(total)) : form.doneNothing)
+      const message = lapsed ? copy.uncancelForm.doneLapsed : total > 0 ? form.done(clp(total)) : form.doneNothing
+      onDone(returns ? `${message} ${copy.uncancelForm.returned}` : message)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['ledger'] }),
         queryClient.invalidateQueries({ queryKey: ['people'] }),
@@ -1584,6 +1596,7 @@ function ReactivateForm({
         ) : (
           <p className="member__label">{form.confirmTitle}</p>
         )}
+        {returns && <p className="member__detail">{copy.uncancelForm.returns}</p>}
         {lapsed ? null : bill.periods.length > 0 ? (
           <PlainList className="member__bill">
             {bill.periods.map((p) => (
@@ -1604,7 +1617,11 @@ function ReactivateForm({
             {form.back}
           </Button>
           <Button type="submit" variant="primary" disabled={reactivated.isPending} busy={reactivated.isPending}>
-            {reactivated.isPending ? form.working : form.submit}
+            {reactivated.isPending
+              ? form.working
+              : uncancel && !lapsed && bill.total_clp > 0
+                ? copy.uncancelForm.confirm(clp(bill.total_clp))
+                : form.submit}
           </Button>
         </div>
       </form>
@@ -1614,6 +1631,7 @@ function ReactivateForm({
   return (
     <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{lapsed ? copy.uncancelForm.introLapsed : form.intro}</p>
+      {returns && <p className="member__detail">{copy.uncancelForm.returns}</p>}
       {!choice && !lapsed && <p className="member__detail">{hints.last}</p>}
       {choice && (
         <fieldset className="member__choices">

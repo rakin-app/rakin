@@ -129,6 +129,9 @@ class Person(BaseModel):
     # it out: null for them, whatever it holds. Never health data, which a gym may not
     # keep (#384), though the text is the gym's.
     left_reason: str | None = None
+    # The plan their Dar de baja ended, which "Deshacer baja" brings back with them in
+    # one step (#549); null while they are here, or when that leave ended none it can.
+    left_with: uuid.UUID | None = None
     # History from before Rakin (#293): the day they first trained here, and how many
     # classes they had. Read by the ficha only, never by billing.
     member_since: date | None

@@ -196,6 +196,8 @@ class UncancelQuote(BaseModel):
     status: MembershipStatus
     last: ReactivationBill
     today: ReactivationBill
+    # The person's Dar de baja ended this plan: they come back on the list with it (#549).
+    returns: bool = False
 
 
 class ReactivationRefusal(StrEnum):

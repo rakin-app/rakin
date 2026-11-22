@@ -139,6 +139,7 @@ def entered(body: dict[str, Any]) -> dict[str, Any]:
         "id",
         "left_on",
         "left_reason",
+        "left_with",
         "member_since",
         "prior_classes",
         "created_at",

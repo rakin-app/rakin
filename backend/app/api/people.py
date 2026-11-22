@@ -37,7 +37,7 @@ from app.contacts import missing_guardian
 from app.domain.billing import SETTLING_KINDS, settled_amount
 from app.domain.dates import gym_today, is_minor
 from app.domain.ledger import EntryStatus
-from app.domain.membership import MembershipStatus, current_first
+from app.domain.membership import LEFT_REASON, RECURRING, MembershipStatus, current_first
 from app.permissions import MembersAddSession, SeesMoney, StaffSession
 from app.schemas.people import (
     MINOR_NEEDS_GUARDIAN,
@@ -100,7 +100,14 @@ SELECT_PERSON = f"""
     SELECT gp.person_id AS id, gp.phone, gp.no_whatsapp, {missing_phone("gp")} AS missing_phone,
            {missing_rut("gp")} AS missing_rut, {missing_guardian("gp")} AS missing_guardian,
            gp.name, gp.email, gp.rut, gp.dob, gp.left_on, gp.left_reason, gp.member_since,
-           gp.prior_classes, gp.created_at, gp.updated_at
+           gp.prior_classes, gp.created_at, gp.updated_at,
+           (SELECT lm.id FROM membership lm JOIN plan lp ON lp.id = lm.plan_id
+            WHERE lm.gym_id = gp.gym_id AND lm.person_id = gp.person_id
+              AND gp.left_on IS NOT NULL AND lm.cancelled_at = gp.left_at
+              AND lm.status = 'cancelled' AND lm.cancel_reason = '{LEFT_REASON}'
+              AND lm.voided_at IS NULL
+              AND lp.kind IN ({", ".join(repr(k.value) for k in sorted(RECURRING))})
+            ORDER BY {current_first("lm")} LIMIT 1) AS left_with
     FROM gym_person gp
     WHERE gp.person_id = :id
 """
