@@ -76,6 +76,10 @@ VOID = "Anulación"
 # credit it cancels did.
 PAYMENT_VOID = "Pago anulado"
 CREDIT_REVERTED = "Ajuste por pago anulado"
+# A payment moved to another period (#280), each half: neither paid nor given back, so
+# in no total, as `v_monthly_income` leaves them out.
+MOVED_OUT = "Pago movido (sale)"
+MOVED_IN = "Pago movido (entra)"
 STATUSES = {"validated": "Validado", "pending": "Por validar", "rejected": "Rechazado"}
 METHODS = {"cash": "Efectivo", "transfer": "Transferencia", "other": "Otro"}
 # app.domain.extra_charges.Category, as the cobros screen names them.
@@ -210,6 +214,8 @@ def kind_label(kind: str, voids: bool, purpose: str | None = None, on_period: bo
     """The row's Tipo; a revert on no period is a carried credit's, with its payment undone."""
     if purpose == "mistake":
         return PAYMENT_VOID
+    if purpose == "move":
+        return MOVED_IN if kind == "payment" else MOVED_OUT
     if purpose == "revert" and kind == "adjustment" and not on_period:
         return CREDIT_REVERTED
     return VOID if voids else KINDS[kind]

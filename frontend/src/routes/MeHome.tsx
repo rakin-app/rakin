@@ -23,7 +23,7 @@ import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { TagHoursNow } from '../components/TagHours'
 import { TagList } from '../components/Tags'
-import { monthYear } from '../format'
+import { monthName, monthYear } from '../format'
 import { t } from '../i18n/es'
 import { useDocumentTitle } from '../pageTitle'
 import './MeHome.css'
@@ -502,6 +502,11 @@ function title(payment: MyPayment, year: string): string {
   const month = payment.period_start ? t.common.month(payment.period_start, year) : null
   const what = payment.charge_title ?? month
   if (payment.kind === 'payment') return what ?? words.payment
+  // Moved to another month, plan or sibling (#280): from its month to the other's.
+  if (payment.purpose === 'move') {
+    const to = payment.moved_period_start ? monthName(payment.moved_period_start) : null
+    return words.movedOut(payment.period_start ? monthName(payment.period_start) : words.payment.toLowerCase(), to)
+  }
   // Undone as recorded by mistake (#281), and the credit it carried with it.
   if (payment.purpose === 'mistake') return words.paymentVoid
   if (payment.purpose === 'revert' && !payment.period_start) return words.creditReverted
@@ -525,6 +530,11 @@ function detail(payment: MyPayment, timeZone: string): string {
   const words = copy.history
   const made = when(payment.validated_at ?? payment.created_at, timeZone)
   if (payment.purpose === 'mistake' || payment.purpose === 'revert') return words.voided(made)
+  // Either half of a payment moved (#280), never why: out, or in from the other month.
+  if (payment.purpose === 'move') {
+    if (payment.kind === 'refund' || !payment.moved_period_start) return words.movedOn(made)
+    return `${words.movedFrom(monthName(payment.moved_period_start))} · ${made}`
+  }
   if (payment.kind === 'refund') return words.refunded(made)
   if (payment.kind === 'adjustment') {
     if (!payment.period_start) return [payment.note, made].filter(Boolean).join(' · ')

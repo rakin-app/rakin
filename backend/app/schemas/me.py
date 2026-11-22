@@ -61,6 +61,9 @@ class MyPayment(BaseModel):
     # Why a correction was written (#278): `mistake` on a refund undoing a payment
     # recorded by mistake (#281), "Pago anulado: error de registro". Never the reason.
     purpose: Purpose | None = None
+    # On either half of a payment moved (#280, `purpose` `move`): the other half's
+    # period, where it went or came from.
+    moved_period_start: date | None = None
 
 
 class MyAttendance(BaseModel):

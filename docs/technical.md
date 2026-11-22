@@ -101,7 +101,7 @@ The phone is a contact, never an identity: phones change, are shared within a fa
 | `study_material_slot` | gym\_id, material\_id, slot\_id | the slots a recurring material shows on, from its `starts_on`: its own, and each that takes the class over when the schedule changes "desde" (`study_material_follow`), so it still shows on the classes before the change; deleting a slot removes the material on it alone, with a `study_material_removed` row (`study_material_slot_gone`) |
 | `study_material_plan` | gym\_id, material\_id, plan\_id | the plans whose members an audience of plans reaches |
 
-Derived views, not tables: `v_overdue` (billing periods past due with no validated payment), `v_balance` (per membership, sum of ledger; a cobro line's entries are not a membership's), `v_inactive` (last attendance > N days), `v_monthly_income` (validated payments less refunds, by month; a payment undone as recorded by mistake, #281, nets like a refund but is reported apart, in `corrected_clp`, not in `refunds_clp`).
+Derived views, not tables: `v_overdue` (billing periods past due with no validated payment), `v_balance` (per membership, sum of ledger; a cobro line's entries are not a membership's), `v_inactive` (last attendance > N days), `v_monthly_income` (validated payments less refunds, by month; a payment undone as recorded by mistake, #281, nets like a refund but is reported apart, in `corrected_clp`, not in `refunds_clp`; a payment moved to another period, #280, is in none of it, both its halves left out).
 
 ## Core state machines
 

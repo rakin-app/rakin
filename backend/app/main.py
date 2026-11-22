@@ -37,6 +37,7 @@ from app.api import (
     member_import,
     member_roll,
     memberships,
+    moves,
     people,
     plans,
     platform,
@@ -166,6 +167,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(grades.router)
     app.include_router(ledger.router)
     app.include_router(corrections.router)
+    app.include_router(moves.router)
     app.include_router(ledger_export.router)
     app.include_router(inactive.router)
     app.include_router(summary.router)

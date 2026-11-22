@@ -7,7 +7,8 @@ the correction's locks (`app.api.ledger.locked_period`). A void, a restore and a
 adjustment write one each (`app.api.ledger`); a plan voided by mistake writes one per
 period it voids, each marked `plan_void`, a payment undone as recorded by mistake one
 (#281), on its period or its cobro line (`record_line_correction`, whose figures are
-the line's: what it owes, as both), a lapsed plan reactivated one with its
+the line's: what it owes, as both), a payment moved one on its membership and, when it
+went to a sibling, one on theirs (`app.api.moves`, #280), a lapsed plan reactivated one with its
 status before and after, and a discount set, changed or taken off one with the
 percentage and reason before and after (`app.api.memberships`, #25).
 
@@ -152,10 +153,13 @@ async def record_line_correction(
 CORRECTIONS = text(
     """
     SELECT a.id, a.at, a.action, a.reason, a.detail, actor.name AS actor_name,
-           bp.period_start, p.name AS plan_name, count(*) OVER () AS total
+           bp.period_start, p.name AS plan_name, other.period_start AS other_period_start,
+           count(*) OVER () AS total
     FROM audit_event a
     LEFT JOIN gym_person actor ON actor.gym_id = a.gym_id AND actor.person_id = a.actor_id
     LEFT JOIN billing_period bp ON bp.id = (a.detail->>'billing_period_id')::uuid
+    -- A payment moved (#280): the period on the other side.
+    LEFT JOIN billing_period other ON other.id = (a.detail->>'other_billing_period_id')::uuid
     LEFT JOIN membership m ON m.id = (a.detail->>'membership_id')::uuid
     LEFT JOIN plan p ON p.id = m.plan_id
     -- History typed on the ficha, or removed from it, is not a correction of their
@@ -196,6 +200,8 @@ def correction(row: Any) -> Correction:
         before=figures(detail.get("before")),
         after=figures(detail.get("after")),
         discount=DiscountShift.model_validate(detail["discount"]) if "discount" in detail else None,
+        moved=detail.get("moved"),
+        other_period_start=row.other_period_start,
     )
 
 

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.activities import gym_uses_grades, practice_names
 from app.api.attendance import attended
 from app.api.class_tags import month_of, tag_hours, tags_of_session, year_of
+from app.api.entries import moved_join
 from app.api.extra_charges import open_lines
 from app.api.extra_lines import line_title_sql
 from app.api.freeze_requests import my_plans
@@ -80,7 +81,9 @@ DEPENDENTS = f"""
 # entries recorded at the same moment go by the period they pay, latest first. Only the
 # notes written for the student are shown: a rejection's, and a carried credit's
 # ("Pagó $X, quedan $Y a favor"); an admin's note on anything else is theirs, the
-# reason a credit was reverted with its payment undone (#281) included.
+# reason a credit was reverted with its payment undone (#281) included. A payment moved
+# (#280) carries the other half's period, "Pago movido de noviembre a diciembre", never
+# why it was moved.
 PAYMENTS = f"""
     WITH mine AS (
         SELECT e.id, e.kind, w.person_id, gp.name AS person_name, e.amount_clp, e.status,
@@ -90,7 +93,7 @@ PAYMENTS = f"""
                       OR (e.kind = :adjustment AND e.billing_period_id IS NULL
                           AND e.extra_line_id IS NULL AND e.purpose IS NULL)
                     THEN e.note END AS note,
-               e.purpose, e.created_at
+               e.purpose, e.created_at, mv.period_start AS moved_period_start
         FROM ledger_entry e
         LEFT JOIN membership m ON m.id = e.membership_id
         LEFT JOIN extra_line l ON l.id = e.extra_line_id
@@ -99,6 +102,7 @@ PAYMENTS = f"""
         JOIN gym_person gp ON gp.gym_id = e.gym_id AND gp.person_id = w.person_id
         LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
         LEFT JOIN plan pl ON pl.id = m.plan_id AND bp.id IS NOT NULL
+        {moved_join("e")}
         WHERE e.kind = ANY(CAST(:kinds AS text[]))
           AND (w.person_id = :me OR w.person_id IN (
               SELECT g.dependent_person_id FROM guardian_link g

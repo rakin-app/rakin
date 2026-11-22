@@ -123,6 +123,18 @@ export type TimelineEntry = {
   // The discount its period was billed at, and why (#25); 0 and null with none.
   discount_pct?: number
   discount_reason?: string | null
+  // On either half of a payment moved (#280): the other half's period, plan and person.
+  moved?: MovedWith | null
+}
+
+/** The other half of a payment moved (backend `MovedWith`, #280). */
+export type MovedWith = {
+  billing_period_id: string
+  period_start: string
+  membership_id: string
+  plan_name: string
+  person_id: string
+  person_name: string
 }
 
 /** What a correcting entry is for (backend `Purpose`, #278). */
@@ -281,6 +293,9 @@ export type Correction = {
   after: Figures | null
   // On a `discount_changed` row (#25): the discount before and after, and the first day billed at the new one.
   discount?: DiscountShift | null
+  // On a payment moved (#280): `out` of this person's period or `in` to it, and the other period's start.
+  moved?: 'out' | 'in' | null
+  other_period_start?: string | null
 }
 
 /** A discount at one moment: 0 and null with none (backend `DiscountFigures`). */
@@ -366,6 +381,82 @@ export function paymentVoidRefused(error: unknown): PaymentVoidRefusal | null {
   if (!(error instanceof ApiError) || error.status !== 409) return null
   const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
   return code === 'not_validated' || code === 'nothing_left' || code === 'a_correction' ? code : null
+}
+
+/** Mover un pago (#280): all or part of it, to another month, plan, or a sibling's. */
+export type MoveRecord = { payment_id: string; billing_period_id: string; amount_clp: number; reason: string }
+
+export type MoveRefusal =
+  | 'not_validated'
+  | 'extra_line'
+  | 'same_period'
+  | 'unrelated'
+  | 'plan_voided'
+  | 'pending'
+  | 'paid'
+  | 'nothing_left'
+  | 'beyond_left'
+  | 'whole_only'
+
+const MOVE_REFUSALS: readonly MoveRefusal[] = [
+  'not_validated',
+  'extra_line',
+  'same_period',
+  'unrelated',
+  'plan_voided',
+  'pending',
+  'paid',
+  'nothing_left',
+  'beyond_left',
+  'whole_only',
+]
+
+/** A period a payment may go to (backend `MoveTarget`). */
+export type MoveTarget = {
+  membership_id: string
+  billing_period_id: string
+  person_id: string
+  person_name: string
+  plan_name: string
+  period_start: string
+  period_end: string
+  outstanding_clp: number
+  // A proof waits on it: refused until it is reviewed.
+  pending: boolean
+}
+
+export type MoveTargets = {
+  // What is left of the payment to move.
+  movable_clp: number
+  // It carried credit: it moves only as a whole.
+  whole_only: boolean
+  targets: MoveTarget[]
+}
+
+// Under `ledger`, so any correction reads it again.
+export function moveTargetsQuery(paymentId: string) {
+  return queryOptions({
+    queryKey: ['ledger', 'move-targets', paymentId],
+    queryFn: () => apiFetch<MoveTargets>(`/api/ledger/moves/targets?payment_id=${encodeURIComponent(paymentId)}`),
+  })
+}
+
+/** Both periods as the move leaves them; `credit` what the new one did not need. */
+export type RecordedMove = {
+  from_period: SettledPeriod
+  to_period: SettledPeriod
+  credit: { amount_clp: number } | null
+}
+
+export function recordMove(body: MoveRecord): Promise<RecordedMove> {
+  return apiFetch<RecordedMove>('/api/ledger/moves', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** The 409's refusal of "Mover pago", for the form to say why. */
+export function moveRefused(error: unknown): MoveRefusal | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
+  return MOVE_REFUSALS.find((r) => r === code) ?? null
 }
 
 /** Anular un plan started by mistake (#256): ended as of its start, every unpaid charge voided. */

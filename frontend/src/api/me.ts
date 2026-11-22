@@ -163,6 +163,8 @@ export type MyPayment = {
   // `mistake` on a refund undoing a payment recorded by mistake (#281), `revert` on the
   // credit it carried, taken back with it.
   purpose?: string | null
+  // On either half of a payment moved (#280): the other half's period.
+  moved_period_start?: string | null
 }
 
 /** The student page, "Mi página": what is due next, where to pay it, what was paid. */

@@ -1284,6 +1284,8 @@ export const es = {
           pending: () => 'Tiene un comprobante por validar: recházalo primero.',
           owes: (amount: string) =>
             `Debe ${amount}: anula sus cargos primero («Anular plan» o «Anular cargo»), o dale de baja si la deuda es real.`,
+          // A payment of theirs moved to a sibling (#280): the sibling's entry names it.
+          moved: () => 'Un pago suyo se movió a un hermano: ese registro lo nombra, así que no se puede eliminar. Puedes darlo de baja.',
           staff: () => `Es parte del equipo ${w.ofThePlace}, o ha dado clases: no se puede eliminar.`,
           guardian: () => `Es apoderado de ${w.memberIs('otros', 'otras')} ${w.members}: desvincúlalos en Familia antes de eliminarlo.`,
         },
@@ -1407,6 +1409,8 @@ export const es = {
         voidCharge: 'Anular cargo',
         // A charge voided by mistake, owed again (#278).
         restoreCharge: 'Restaurar cargo',
+        // A payment recorded on the wrong month, plan or sibling, moved (#280).
+        move: 'Mover a otro mes o plan',
         // A payment recorded by mistake, undone (#281).
         voidPayment: 'Anular pago',
         refund: 'Reembolsar',
@@ -1469,6 +1473,56 @@ export const es = {
         nothing_left: 'A ese pago ya no le queda nada: se devolvió o anuló completo.',
         a_correction: 'Ese pago es una corrección: se deshace con su inversa.',
         failed: 'No pudimos anularlo. Inténtalo de nuevo.',
+      },
+      // "Mover a otro mes o plan" (#280): a payment recorded on the wrong month, plan or
+      // sibling, moved where it belongs. Neither income nor a refund; no email.
+      moveForm: {
+        title: 'Mover pago',
+        intro:
+          'Para un pago registrado en el mes, el plan o el hermano equivocado: el dinero pasa al período que elijas. No cuenta como ingreso ni como devolución, y no se envía ningún correo.',
+        target: 'Mover a',
+        // An option: the month and plan, whose when it is a sibling's, and what it owes.
+        option: (month: string, plan: string, person: string | null, owed: string) =>
+          `${month} · ${plan}${person ? ` · ${person}` : ''} · debe ${owed}`,
+        pendingOption: (label: string) => `${label} (comprobante por validar)`,
+        loading: 'Buscando períodos…',
+        failed: 'No pudimos cargar los períodos. Inténtalo de nuevo.',
+        none: 'No hay otro período por pagar al que moverlo: ni de este plan, ni de otro plan, ni de un hermano.',
+        allPending: 'Los períodos por pagar a los que podría moverse tienen un comprobante por validar: revísalo primero.',
+        amount: 'Monto',
+        amountHint: (left: string) => `Quedan ${left} de este pago por mover.`,
+        // A payment that carried credit (an overpayment) moves only as a whole.
+        wholeOnly: (left: string) =>
+          `Este pago dejó saldo a favor: se mueve completo (${left}) y ese saldo a favor con él.`,
+        amountNeeded: 'Escribe cuánto mover.',
+        beyond: (left: string) => `Quedan ${left} de este pago: no se puede mover más.`,
+        reason: 'Motivo',
+        reasonHint: 'Solo lo ve el equipo.',
+        reasonNeeded: 'Escribe por qué se mueve.',
+        // What it does to the other period as it is typed.
+        credit: (amount: string) => `Quedan ${amount} a favor en el período nuevo.`,
+        submit: (amount: string) => `Mover ${amount}`,
+        // The second step, when it goes to another plan or person (design, section 4).
+        confirmPlan: (amount: string, from: string, to: string) => `Se moverán ${amount} de ${from} a ${to}.`,
+        confirm: (amount: string) => `Sí, mover ${amount}`,
+        back: 'Volver',
+        cancel: 'Cancelar',
+        working: 'Moviendo…',
+        done: (amount: string, from: string, to: string) => `Pago movido: ${amount} de ${from} a ${to}.`,
+      },
+      // Why "Mover pago" was refused (#280).
+      moveRefused: {
+        not_validated: 'Ese pago no está validado: un comprobante se revisa, no se mueve.',
+        extra_line: 'Un pago de cobro extra no se mueve a un plan.',
+        same_period: 'El pago ya está en ese período.',
+        unrelated: 'Solo se mueve a la misma persona, o a un hermano con el mismo apoderado.',
+        plan_voided: 'Ese plan se anuló completo.',
+        pending: 'Ese período tiene un comprobante por validar: revísalo primero.',
+        paid: 'Ese período ya está pagado completo.',
+        nothing_left: 'A ese pago ya no le queda nada: se devolvió, movió o anuló completo.',
+        beyond_left: 'Es más de lo que queda de ese pago.',
+        whole_only: 'Este pago dejó saldo a favor: se mueve completo.',
+        failed: 'No pudimos moverlo. Inténtalo de nuevo.',
       },
       // Why a restore was refused (#278).
       restoreRefused: {
@@ -1767,6 +1821,11 @@ export const es = {
         paymentVoid: (month: string) => `Pago anulado ${month}`,
         mistake: 'error de registro',
         creditReverted: 'Ajuste por pago anulado',
+        // A payment moved (#280): each half names the other's month, and its plan or
+        // person when it is not this plan's.
+        movedTo: (month: string) => `Movido a ${month}`,
+        movedFrom: (month: string) => `Movido de ${month}`,
+        movedElsewhere: (plan: string, person: string | null) => (person ? `${plan} · ${person}` : plan),
         all: (n: number) => `Ver todo el libro (${n})`,
         fewer: 'Ver menos',
       },
@@ -1778,6 +1837,9 @@ export const es = {
         planVoid: (month: string) => `Anuló plan · cargo ${month}`,
         restore: (month: string) => `Restauró cargo ${month}`,
         paymentVoid: (month: string) => (month ? `Anuló pago ${month}` : 'Anuló un pago'),
+        // A payment moved (#280), from this person's side: out of their period, or into it.
+        movedOut: (month: string, to: string) => `Movió pago ${month} → ${to}`,
+        movedIn: (month: string, from: string) => `Recibió pago movido de ${from} → ${month}`,
         // An adjustment by which way it went, as the Libro names it.
         adjustment: (favor: boolean, month: string) => `${favor ? 'Descuento' : 'Recargo'} ${month}`,
         dueDate: 'Cambió el vencimiento',
@@ -3403,6 +3465,8 @@ export const es = {
       paymentVoid: 'Pago anulado',
       creditReverted: 'Ajuste por pago anulado',
       mistake: 'Error de registro',
+      // Either half of a payment moved to another period (#280): neither income nor a refund.
+      moved: { out: 'Pago movido (sale)', in: 'Pago movido (entra)' },
       kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
       // An adjustment on a period by which way it goes (#210), in place of `kind.adjustment`.
       adjustment: { favor: 'Descuento', owed: 'Recargo' },
@@ -4361,6 +4425,11 @@ export const es = {
       paymentVoid: 'Pago anulado: error de registro',
       voided: (when: string) => `anulado ${when}`,
       creditReverted: 'Saldo a favor anulado',
+      // A payment moved to another month, plan or sibling (#280): never the gym's reason.
+      // Each half by the other's month; with none readable, plainly moved.
+      movedOut: (from: string, to: string | null) => (to ? `Pago movido de ${from} a ${to}` : `Pago de ${from} movido`),
+      movedFrom: (from: string) => `movido de ${from}`,
+      movedOn: (when: string) => `movido ${when}`,
     },
     proof: {
       title: 'Subir comprobante',

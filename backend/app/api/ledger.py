@@ -41,7 +41,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.corrections import balance, record_correction, record_line_correction
-from app.api.entries import insert_entry, standing_void
+from app.api.entries import MOVED_COLUMNS, insert_entry, moved_join, standing_void
 from app.api.extra_charges import line_facts
 from app.api.extra_lines import line_after, line_title_sql, locked_line_by_id, refund_line_payment
 from app.api.people import people_matching
@@ -70,6 +70,7 @@ from app.schemas.ledger import (
     LedgerBook,
     LedgerPeriod,
     MembershipLedger,
+    MovedWith,
     OpenPeriod,
     Overdue,
     OverduePeriod,
@@ -128,6 +129,15 @@ async def locked_period(
     after the other instead of both finding it open.
     """
     await session.execute(LOCK_MEMBERSHIP, {"membership_id": membership_id})
+    return await period_under_lock(session, period_id, membership_id)
+
+
+async def period_under_lock(
+    session: AsyncSession, period_id: uuid.UUID, membership_id: uuid.UUID
+) -> tuple[Any, BillingPeriod]:
+    """`locked_period` once its membership is locked: the period, locked, and what it has
+    been paid. For a correction of two periods (a move, #280), which locks both
+    memberships first and then both periods, each pair in id order."""
     row = (
         await session.execute(
             text(
@@ -997,11 +1007,27 @@ def restored(row: Any) -> Restored | None:
     )
 
 
+def moved_with(row: Any) -> MovedWith | None:
+    """The other half of a payment moved (#280), from `MOVED_COLUMNS`."""
+    if row.moved_period_id is None:
+        return None
+    return MovedWith(
+        billing_period_id=row.moved_period_id,
+        period_start=row.moved_period_start,
+        membership_id=row.moved_membership_id,
+        plan_name=row.moved_plan_name,
+        person_id=row.moved_person_id,
+        person_name=row.moved_person_name,
+    )
+
+
 def timeline_entry(row: Any) -> TimelineEntry:
     fields = dict(row._mapping)
-    for column in VOIDED_COLUMNS.split(","):
+    for column in (VOIDED_COLUMNS + "," + MOVED_COLUMNS).split(","):
         fields.pop(column.split(" AS ")[1].strip())
-    return TimelineEntry(**fields, voided=voided(row), restored=restored(row))
+    return TimelineEntry(
+        **fields, voided=voided(row), restored=restored(row), moved=moved_with(row)
+    )
 
 
 TIMELINE = text(
@@ -1009,11 +1035,12 @@ TIMELINE = text(
     SELECT e.id, e.kind, e.status, e.amount_clp, e.method, e.billing_period_id,
            bp.period_start, e.note, e.created_at, vp.name AS validated_by_name,
            e.validated_at, e.refund_of, coalesce(bp.discount_pct, 0) AS discount_pct,
-           bp.discount_reason, {PURPOSE_COLUMNS}, {VOIDED_COLUMNS}
+           bp.discount_reason, {PURPOSE_COLUMNS}, {VOIDED_COLUMNS}, {MOVED_COLUMNS}
     FROM ledger_entry e
     LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
     LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
     {VOIDED_JOIN}
+    {moved_join("e")}
     WHERE e.membership_id = :id
     ORDER BY e.created_at DESC, e.id DESC
     LIMIT :limit
