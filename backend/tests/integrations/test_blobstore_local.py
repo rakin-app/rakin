@@ -66,6 +66,30 @@ def test_stat_reports_size_and_type(client: TestClient) -> None:
     assert asyncio.run(s.stat("p/none.pdf")) is None
 
 
+def test_a_blob_being_written_again_keeps_its_type_for_a_reader(client: TestClient) -> None:
+    """A double tap PUTs one proof twice, the second while the first's claim stats it
+    (#527): S3 serves the old object or the new one, never one with no type."""
+    s, blob = store(client), StoredBlob(size=3, content_type="application/pdf")
+
+    async def race() -> list[StoredBlob | None]:
+        await s.put("p/a.pdf", "application/pdf", b"pdf")
+        done = False
+
+        async def rewrite() -> None:
+            while not done:
+                await s.put("p/a.pdf", "application/pdf", b"pdf")
+
+        writer = asyncio.create_task(rewrite())
+        try:
+            return [await s.stat("p/a.pdf") for _ in range(2000)]
+        finally:
+            done = True
+            await writer
+
+    seen = asyncio.run(race())
+    assert [b for b in seen if b != blob] == []
+
+
 def test_a_url_signed_with_another_secret_is_refused(client: TestClient, tmp_path: Path) -> None:
     forger = LocalBlobStore(
         root=tmp_path,
