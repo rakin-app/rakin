@@ -132,6 +132,17 @@ export type InstalmentProgress = {
   collected_clp: number
 }
 
+/** What the gym spent that the cobro recovers, beside what it collected (#318). Both
+ * gross: nothing nets, and the lines are unchanged. */
+export type LinkedExpenses = {
+  // The expenses that name the cobro and count (not voided).
+  count: number
+  expenses_clp: number
+  collected_clp: number
+  // Collected less spent: below zero, the group has not paid it all back.
+  difference_clp: number
+}
+
 export type ExtraCharge = ExtraChargeSummary & {
   description: string | null
   message: string | null
@@ -139,6 +150,8 @@ export type ExtraCharge = ExtraChargeSummary & {
   people: Line[]
   // Paid and owed per instalment; one entry for a cobro paid at once.
   schedule: InstalmentProgress[]
+  // Only to who also holds `expenses_read`; null (or absent) otherwise.
+  expenses?: LinkedExpenses | null
 }
 
 export type CancelPreview = { resplit_allowed: boolean; amounts: Record<string, number> }

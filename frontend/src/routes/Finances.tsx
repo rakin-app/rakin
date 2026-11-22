@@ -204,6 +204,11 @@ function Month({ shown }: { shown: FinanceMonth }) {
   return (
     <Card className="finances__card" aria-label={copy.monthLabel(t.common.month(shown.month, ''))}>
       <Tiles income={income?.total_clp ?? null} expenses={shown.expenses_clp} result={shown.result_clp} />
+      {shown.recovered && (
+        <p className="finances__hint">
+          {copy.recovered(clp(shown.recovered.paid_clp), clp(shown.recovered.collected_clp))}
+        </p>
+      )}
       {income === null && <p className="finances__note">{copy.onlyExpenses}</p>}
       {income !== null && (
         <section className="finances__group" aria-label={copy.income}>

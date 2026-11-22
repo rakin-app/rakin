@@ -13,6 +13,12 @@ billing reads: no balance, Esperado, Cobrado, overdue email or student page sees
   list and counts nowhere, and is not changed again. Nothing deletes one. An expense
   recorded from a gasto fijo names it (`recurring_id`, #315, `app.api.expense_recurring`),
   and one per template and month counts: a second is a 409 `already_recorded`.
+- An expense the group pays back names the cobro extra that recovers it
+  (`extra_charge_id`, #318): a trip's bus and hotel, both under one cobro. Naming one
+  takes reading it (`money_read`, as RLS holds cobros), and it changes nothing of the
+  cobro: its lines, what anyone owes and Cobrado are as they were. The cobro's detail
+  and Finanzas set the two side by side, both gross (`app.api.extra_charges`,
+  `app.api.finances`).
 - A receipt goes from the browser straight to object storage, as a student's proof
   does (`app.api.proofs`): `POST /receipt-upload` presigns a key under the gym's
   `receipts/<gym_id>/`, of the blob store's types and at most 10 MB, and recording or
@@ -127,10 +133,13 @@ def is_gym_receipt(gym_id: uuid.UUID, key: str) -> bool:
 EXPENSE_COLUMNS = """
     SELECT e.id, e.spent_on, e.amount_clp, e.category_id, c.name AS category_name, e.payee,
            e.method, e.note, e.receipt_object_key IS NOT NULL AS has_receipt, e.recurring_id,
+           e.extra_charge_id, x.title AS extra_charge_title,
            cb.name AS created_by_name, e.created_at, e.updated_at, e.voided_at,
            vb.name AS voided_by_name, e.void_reason
     FROM expense e
     JOIN expense_category c ON c.id = e.category_id
+    -- RLS shows the cobro to `money_read` alone: to anyone else the title is null.
+    LEFT JOIN extra_charge x ON x.id = e.extra_charge_id
     LEFT JOIN gym_person cb ON cb.gym_id = e.gym_id AND cb.person_id = e.created_by
     LEFT JOIN gym_person vb ON vb.gym_id = e.gym_id AND vb.person_id = e.voided_by
 """
@@ -147,14 +156,15 @@ ONE = text(EXPENSE_COLUMNS + " WHERE e.id = :id")
 
 LOCK = text(
     "SELECT id, spent_on, amount_clp, category_id, payee, method, note, receipt_object_key,"
-    " voided_at FROM expense WHERE id = :id FOR UPDATE"
+    " extra_charge_id, voided_at FROM expense WHERE id = :id FOR UPDATE"
 )
 
 INSERT = text(
     "INSERT INTO expense (gym_id, spent_on, amount_clp, category_id, payee, method, note,"
-    " receipt_object_key, recurring_id, created_by)"
+    " receipt_object_key, recurring_id, extra_charge_id, created_by)"
     " VALUES (current_setting('app.gym_id')::uuid, :spent_on, :amount_clp, :category_id,"
-    " :payee, :method, :note, :receipt, :recurring_id, current_setting('app.person_id')::uuid)"
+    " :payee, :method, :note, :receipt, :recurring_id, :extra_charge_id,"
+    " current_setting('app.person_id')::uuid)"
     " RETURNING id"
 )
 
@@ -168,6 +178,9 @@ INSERT_AUDIT = text(
 CATEGORY = text("SELECT id, name, archived_at FROM expense_category WHERE id = :id")
 
 RECURRING_EXISTS = text("SELECT id FROM expense_recurring WHERE id = :id")
+
+# Under RLS, a cobro of the gym the person may read.
+EXTRA_CHARGE_EXISTS = text("SELECT id FROM extra_charge WHERE id = :id")
 
 TIMEZONE = text("SELECT timezone FROM gym WHERE id = :id")
 
@@ -195,6 +208,13 @@ async def _live_category(session: AsyncSession, category_id: uuid.UUID) -> Any:
     if row.archived_at is not None:
         raise unprocessable("category_archived", "the category is archived")
     return row
+
+
+async def _known_charge(session: AsyncSession, charge_id: uuid.UUID) -> None:
+    """Refuse a cobro extra the person cannot see: not the gym's, or theirs to read only
+    with `money_read`. The foreign key holds the gym too (0086)."""
+    if (await session.scalar(EXTRA_CHARGE_EXISTS, {"id": charge_id})) is None:
+        raise unprocessable("no_extra_charge", "no such cobro extra in this gym")
 
 
 def _refuse_future(spent_on: date, today: date) -> None:
@@ -291,6 +311,8 @@ async def record_expense(
         and (await session.scalar(RECURRING_EXISTS, {"id": body.recurring_id})) is None
     ):
         raise unprocessable("no_recurring", "no such gasto fijo in this gym")
+    if body.extra_charge_id is not None:
+        await _known_charge(session, body.extra_charge_id)
     if body.receipt_key is not None:
         await _usable_receipt(tenant, body.receipt_key, integrations)
     try:
@@ -312,7 +334,7 @@ async def record_expense(
 
 
 # What an edit may change, as the columns hold them.
-EDITABLE = ("spent_on", "amount_clp", "category_id", "payee", "method", "note")
+EDITABLE = ("spent_on", "amount_clp", "category_id", "payee", "method", "note", "extra_charge_id")
 
 
 def _shown(value: Any) -> Any:
@@ -362,6 +384,8 @@ async def change_expense(
     # history, and the `expense_changed` row keeps its key (#314). Nothing deletes it.
     if changed.get("receipt_object_key") is not None:
         await _usable_receipt(tenant, changed["receipt_object_key"], integrations)
+    if changed.get("extra_charge_id") is not None:
+        await _known_charge(session, changed["extra_charge_id"])
 
     columns = [f for f in changed if f != "category_name"]
     assignments = ", ".join(f"{f} = :{f}" for f in columns)

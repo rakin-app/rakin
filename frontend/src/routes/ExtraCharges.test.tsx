@@ -643,6 +643,26 @@ describe('Un cobro extra', () => {
     expect(within(bea).queryByRole('button', { name: copy.detail.markPaid })).not.toBeInTheDocument()
   })
 
+  it('sets what the cobro recovers beside what it collected, to who reads expenses (#318)', async () => {
+    const expenses = { count: 2, expenses_clp: 170_000, collected_clp: 60_000, difference_clp: -110_000 }
+    stubApi('owner', (path) => (path === `/api/extra-charges/${CHARGE.id}` ? { body: { ...CHARGE, expenses } } : undefined))
+    renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
+
+    const card = await screen.findByRole('region', { name: copy.detail.expensesLabel })
+    const figure = (label: string) => within(card).getByText(label, { selector: 'dt' }).nextElementSibling
+    expect(figure(copy.detail.expensesLabel)).toHaveTextContent('$170.000')
+    expect(figure(copy.detail.collectedLabel)).toHaveTextContent('$60.000')
+    expect(figure(copy.detail.differenceLabel)).toHaveTextContent('110.000')
+    expect(figure(copy.detail.differenceLabel)).toHaveClass('extra__negative')
+  })
+
+  it('shows no expenses on a cobro whose answer carries none (#318)', async () => {
+    stubApi('owner')
+    renderAt(`/admin/pagos/cobros/${CHARGE.id}`)
+    await screen.findByRole('link', { name: 'Ana Rojas' })
+    expect(screen.queryByRole('region', { name: copy.detail.expensesLabel })).not.toBeInTheDocument()
+  })
+
   it('gives each person one action, and the rest under their "Más" (#357)', async () => {
     stubApi('owner')
     renderAt(`/admin/pagos/cobros/${CHARGE.id}`)

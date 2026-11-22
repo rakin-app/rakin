@@ -47,6 +47,8 @@ class ExpenseIn(BaseModel):
     receipt_key: ReceiptKey | None = None
     # The gasto fijo it is recorded from (#315): an estimated one's form sends it.
     recurring_id: uuid.UUID | None = None
+    # The cobro extra that recovers it (#318), if the gym gets it back from the group.
+    extra_charge_id: uuid.UUID | None = None
 
 
 class ExpenseChange(BaseModel):
@@ -63,6 +65,8 @@ class ExpenseChange(BaseModel):
     note: Note | None = None
     receipt_key: ReceiptKey | None = None
     remove_receipt: bool = False
+    # The cobro extra that recovers it (#318); null unlinks it.
+    extra_charge_id: uuid.UUID | None = None
 
     @field_validator("spent_on", "amount_clp", "category_id", mode="before")
     @classmethod
@@ -95,6 +99,10 @@ class Expense(BaseModel):
     has_receipt: bool
     # The gasto fijo it was recorded from, if any (#315).
     recurring_id: uuid.UUID | None
+    # The cobro extra that recovers it, if any (#318), and its title: `None` to whoever
+    # cannot read cobros (`money_read`), who still sees that it names one.
+    extra_charge_id: uuid.UUID | None
+    extra_charge_title: str | None
     created_by_name: str | None
     created_at: datetime
     updated_at: datetime | None

@@ -11,12 +11,18 @@ export type Income = { total_clp: number; plans_clp: number; extra_clp: number }
 
 export type CategoryAmount = { category_id: string; name: string; amount_clp: number; count: number }
 
+/** Of the month's result, what went through cobros extra that recover an expense
+ * (#318): already in Entradas and Salidas, gross. */
+export type Recovered = { paid_clp: number; collected_clp: number }
+
 export type FinanceMonth = {
   month: string
   current_month: string
   income: Income | null
   expenses_clp: number
   result_clp: number | null
+  // Null without `money_read`, and in a month with nothing recovered.
+  recovered: Recovered | null
   categories: CategoryAmount[]
 }
 

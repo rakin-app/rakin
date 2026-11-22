@@ -834,7 +834,8 @@ def _recurring_expenses(as_of: date) -> list[Row]:
 
 def _expenses(as_of: date) -> list[Row]:
     """`MONTHLY_EXPENSES` up to the seed date, the federation's yearly fee last month,
-    and last month's internet typed twice, the second voided."""
+    last month's internet typed twice, the second voided, and the polerones the gym
+    bought, which their cobro extra recovers (#318)."""
     by = seed_id("person", VALIDATOR)
     this_month = as_of.replace(day=1)
     rows: list[Row] = []
@@ -854,6 +855,7 @@ def _expenses(as_of: date) -> list[Row]:
             "note": None,
             "receipt_object_key": None,
             "recurring_id": seed_id("expense_recurring", key) if monthly else None,
+            "extra_charge_id": None,
             "created_by": by,
             "created_at": recorded,
             "voided_at": None,
@@ -889,6 +891,20 @@ def _expenses(as_of: date) -> list[Row]:
     voided = local(last_month.replace(day=12), 9)
     rows.append(
         {**twice, "voided_at": voided, "voided_by": by, "void_reason": "Registrado dos veces"}
+    )
+    # Bought before their cobro was made (`_extra_charges`: 20 days before its first
+    # cuota), for less than the three people pay for them.
+    [poleron] = [c for c in INSTALMENT_CHARGES if c.key == "poleron"]
+    bought = as_of + timedelta(days=poleron.due_in - 25)
+    polerones = spent(
+        "equipamiento", "poleron", bought, 96_000, "Confecciones Andes", "transfer", monthly=False
+    )
+    rows.append(
+        {
+            **polerones,
+            "note": "Polerones oficiales",
+            "extra_charge_id": seed_id("extra_charge", poleron.key),
+        }
     )
     return rows
 

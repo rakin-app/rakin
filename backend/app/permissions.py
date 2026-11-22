@@ -370,3 +370,13 @@ async def sees_money(
 
 
 SeesMoney = Annotated[bool, Depends(sees_money)]
+
+
+async def sees_expenses(
+    tenant: Annotated[Tenant, Depends(current_tenant)], session: TenantSession
+) -> bool:
+    """Whether the person acting may see what the gym spends: they hold `expenses_read`."""
+    return await holds(session, tenant, Permission.EXPENSES_READ)
+
+
+SeesExpenses = Annotated[bool, Depends(sees_expenses)]

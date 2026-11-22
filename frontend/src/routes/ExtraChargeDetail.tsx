@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import {
   cancelLine,
@@ -13,11 +13,13 @@ import {
   remindPending,
   type ExtraCharge,
   type Line,
+  type LinkedExpenses,
 } from '../api/extraCharges'
 import { myAccessQuery, readsLedger } from '../api/me'
 import type { Method } from '../api/member'
 import { useGymToday } from '../api/sessions'
 import { Button, buttonClass } from '../components/Button'
+import { cx } from '../components/classNames'
 import { Banner, Card, CheckRow, PlainList, SectionHeader } from '../components/Card'
 import { MoreMenu, moreItemClass } from '../components/MoreMenu'
 import { Field, Input, Select } from '../components/Field'
@@ -106,6 +108,7 @@ function Detail({ charge }: { charge: ExtraCharge }) {
         <Progress charge={charge} />
         {charge.description && <p className="extra__message">{charge.description}</p>}
       </Card>
+      {charge.expenses && charge.expenses.count > 0 && <Recovery figures={charge.expenses} />}
       {done && (
         <Banner tone="done">
           {done}
@@ -590,5 +593,36 @@ function MethodField({ label, value, onChange }: { label: string; value: Method;
         </Select>
       )}
     </Field>
+  )
+}
+
+/** What the gym spent that the cobro recovers, beside what it collected (#318):
+ * "Gastos asociados $X · Recaudado $Y · Diferencia". Shown to who holds both
+ * `money_read` and `expenses_read`; the cobro's lines are as they were. */
+function Recovery({ figures }: { figures: LinkedExpenses }) {
+  const words = t.admin.extra.detail
+  const titleId = useId()
+  const difference = figures.difference_clp
+  return (
+    <Card aria-labelledby={titleId}>
+      <SectionHeader id={titleId} title={words.expensesLabel} trailing={words.expensesCount(figures.count)} />
+      <dl className="extra__recovery">
+        <div>
+          <dt>{words.expensesLabel}</dt>
+          <dd>{clp(figures.expenses_clp)}</dd>
+        </div>
+        <div>
+          <dt>{words.collectedLabel}</dt>
+          <dd>{clp(figures.collected_clp)}</dd>
+        </div>
+        <div>
+          <dt>{words.differenceLabel}</dt>
+          <dd className={cx(difference < 0 && 'extra__negative')}>
+            {difference === 0 ? clp(0) : t.common.signedClp(difference)}
+          </dd>
+        </div>
+      </dl>
+      <p className="extra__hint">{words.expensesNote}</p>
+    </Card>
   )
 }
