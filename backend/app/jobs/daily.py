@@ -20,7 +20,8 @@ from app.auth import build_notices
 from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.domain.dates import gym_today
-from app.integrations import build_mailer
+from app.integrations import build_blob_store, build_mailer
+from app.integrations.blobstore import BlobStore
 from app.jobs import (
     billing,
     catch_up,
@@ -32,6 +33,7 @@ from app.jobs import (
     schedule,
     statements,
     team,
+    uploads,
 )
 from app.jobs.runner import Job, Outcome, Report, run_due
 from app.logging import configure_logging
@@ -56,15 +58,17 @@ JOBS: tuple[Job, ...] = (
 )
 
 
-def jobs(notices: Notices) -> tuple[Job, ...]:
+def jobs(notices: Notices, store: BlobStore) -> tuple[Job, ...]:
     """Every nightly job: `JOBS`, then the statements for the periods billing wrote,
-    the overdue emails for the periods still owed, and Resumen del mes to each titular
-    from the month `month_summary` kept."""
+    the overdue emails for the periods still owed, Resumen del mes to each titular
+    from the month `month_summary` kept, and last the uploads nobody claimed deleted
+    from `store`."""
     return (
         *JOBS,
         statements.job(notices),
         overdue.job(notices),
         month_summary.email_job(notices),
+        uploads.job(store),
     )
 
 
@@ -137,14 +141,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         async def keep_serving(every: float) -> None:
             async with mailing(settings) as notices:
-                await serve(settings, every, jobs(notices))
+                await serve(settings, every, jobs(notices, build_blob_store(settings)))
 
         asyncio.run(keep_serving(args.every))
         return 0
 
     async def once(day: date) -> Report:
         async with mailing(settings) as notices:
-            return await run_once(settings, day, jobs(notices))
+            return await run_once(settings, day, jobs(notices, build_blob_store(settings)))
 
     report = asyncio.run(once(args.today or today(settings)))
     return 1 if report.outcome is Outcome.FAILED else 0

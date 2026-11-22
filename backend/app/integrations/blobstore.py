@@ -18,6 +18,7 @@ import tempfile
 import time
 from collections.abc import AsyncIterable, AsyncIterator, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol
 from urllib.parse import quote, urlencode
@@ -131,6 +132,11 @@ class BlobStore(Protocol):
         of them `keys_under` listed. For a gym's deletion (`app.offboarding`)."""
         ...
 
+    async def keys_stored_before(self, prefix: str, before: datetime) -> list[str]:
+        """Every key under `prefix` whose file was last written before `before`, sorted.
+        For the nightly reaper of uploads nobody claimed (`app.jobs.uploads`)."""
+        ...
+
 
 def s3_client(
     endpoint_url: str, region: str, access_key_id: str, secret_access_key: str
@@ -238,6 +244,22 @@ class S3BlobStore:
 
         return sorted(await asyncio.to_thread(keys))
 
+    async def keys_stored_before(self, prefix: str, before: datetime) -> list[str]:
+        validate_prefix(prefix)
+
+        def keys() -> list[str]:
+            pages = self._client.get_paginator("list_objects_v2").paginate(
+                Bucket=self.bucket, Prefix=prefix
+            )
+            return [
+                item["Key"]
+                for page in pages
+                for item in page.get("Contents", [])
+                if item["LastModified"] < before
+            ]
+
+        return sorted(await asyncio.to_thread(keys))
+
     async def delete_under(self, prefix: str) -> int:
         # The store holds no half-written upload: a PUT lands whole or not at all.
         stored = await self.keys_under(prefix)
@@ -332,6 +354,30 @@ class LocalBlobStore:
                 for path in under.rglob("*")
                 if path.is_file() and not path.name.startswith(".")
             ]
+
+        return sorted(await asyncio.to_thread(keys))
+
+    async def keys_stored_before(self, prefix: str, before: datetime) -> list[str]:
+        validate_prefix(prefix)
+        data = self.root / "data"
+
+        def keys() -> list[str]:
+            under = data / prefix
+            if not under.is_dir():
+                return []
+            found = []
+            for path in under.rglob("*"):
+                # Not an upload still being written beside its target (`.up-…`).
+                if not path.is_file() or path.name.startswith("."):
+                    continue
+                try:
+                    # Written once, renamed into place (`write`): its time is the upload's.
+                    written = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+                except FileNotFoundError:  # deleted in between
+                    continue
+                if written < before:
+                    found.append(path.relative_to(data).as_posix())
+            return found
 
         return sorted(await asyncio.to_thread(keys))
 

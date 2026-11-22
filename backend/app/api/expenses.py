@@ -46,6 +46,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.proofs import LOCK_PROOF
 from app.domain.dates import add_months, gym_today
 from app.integrations import Integrations, get_integrations
 from app.integrations.blobstore import ALLOWED_CONTENT_TYPES, MAX_UPLOAD_BYTES
@@ -222,11 +223,16 @@ def _refuse_future(spent_on: date, today: date) -> None:
         raise unprocessable("future", "an expense is recorded once it is paid")
 
 
-async def _usable_receipt(tenant: Tenant, key: str, integrations: Integrations) -> None:
+async def _usable_receipt(
+    tenant: Tenant, key: str, integrations: Integrations, session: AsyncSession
+) -> None:
     """Refuse a key outside the gym's receipts or a file that never landed. One held by
     another expense is the unique index's to refuse."""
     if not is_gym_receipt(tenant.gym_id, key):
         raise unprocessable("not_a_receipt", "not one of the gym's uploads")
+    # Held to the end of the transaction, as a proof's is: the nightly reaper takes it
+    # before deleting an unclaimed upload, so it never deletes one this saves.
+    await session.execute(LOCK_PROOF, {"key": key})
     stored = await integrations.blob_store.stat(key)
     # The store already refused anything else at upload; checked again, since an
     # upload URL is only as strict as the store that signed it.
@@ -314,7 +320,7 @@ async def record_expense(
     if body.extra_charge_id is not None:
         await _known_charge(session, body.extra_charge_id)
     if body.receipt_key is not None:
-        await _usable_receipt(tenant, body.receipt_key, integrations)
+        await _usable_receipt(tenant, body.receipt_key, integrations, session)
     try:
         # A savepoint, so a refusal leaves the request's transaction usable for the 409.
         async with session.begin_nested():
@@ -383,7 +389,7 @@ async def change_expense(
     # A receipt replaced or taken off stays in storage: it is part of the correction's
     # history, and the `expense_changed` row keeps its key (#314). Nothing deletes it.
     if changed.get("receipt_object_key") is not None:
-        await _usable_receipt(tenant, changed["receipt_object_key"], integrations)
+        await _usable_receipt(tenant, changed["receipt_object_key"], integrations, session)
     if changed.get("extra_charge_id") is not None:
         await _known_charge(session, changed["extra_charge_id"])
 

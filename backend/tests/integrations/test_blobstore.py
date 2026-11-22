@@ -11,6 +11,7 @@ import time
 import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -302,3 +303,20 @@ def test_delete_under_removes_every_file_below_a_prefix_and_no_other(harness: Ha
     assert asyncio.run(harness.store.keys_under(f"{root}/a/")) == []
     assert asyncio.run(harness.store.keys_under(f"{root}/ab/")) == [f"{root}/ab/3"]
     assert asyncio.run(harness.store.delete_under(f"{root}/none/")) == 0
+
+
+def test_keys_stored_before_lists_only_files_written_before_a_time(harness: Harness) -> None:
+    root = f"t-{uuid.uuid4().hex}"
+    inside = [f"{root}/a/1", f"{root}/a/deep/2"]
+    for name in [*inside, f"{root}/ab/3"]:
+        asyncio.run(harness.store.put(name, "image/png", PNG))
+    # Wide of any skew between this host's clock and the store's, and of CI's midnight
+    # run, which fakes the clock by up to a day.
+    later = datetime.now(UTC) + timedelta(days=2)
+    earlier = datetime.now(UTC) - timedelta(days=2)
+
+    assert asyncio.run(harness.store.keys_stored_before(f"{root}/a/", later)) == sorted(inside)
+    assert asyncio.run(harness.store.keys_stored_before(f"{root}/a/", earlier)) == []
+    assert asyncio.run(harness.store.keys_stored_before(f"{root}/none/", later)) == []
+    with pytest.raises(ValueError):
+        asyncio.run(harness.store.keys_stored_before(root, later))

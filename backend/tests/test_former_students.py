@@ -11,9 +11,11 @@ a former student, whatever the path, and one can be deleted as anyone can
 import asyncio
 import dataclasses
 import json
+import tempfile
 import uuid
 from collections.abc import Iterator
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 import asyncpg
@@ -24,6 +26,7 @@ from app.auth import build_notices
 from app.db import create_engine, create_sessionmaker
 from app.db_bootstrap import to_dsn
 from app.domain.dates import add_months
+from app.integrations.blobstore import LocalBlobStore
 from app.jobs import daily
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
@@ -294,10 +297,13 @@ def nights(db: Database, days: list[date], outbox: RecordingMailer) -> None:
             notices = build_notices(db.settings, outbox, lambda: sessionmaker)
             conn = await asyncpg.connect(to_dsn(db.owner_url))
             try:
-                for day in days:
-                    for job in daily.jobs(notices):
-                        async with conn.transaction():
-                            await job.run(conn, day)
+                # No uploads: the reaper finds nothing to delete.
+                with tempfile.TemporaryDirectory() as blobs:
+                    store = LocalBlobStore(root=Path(blobs), secret_key="s" * 32, ttl_seconds=60)
+                    for day in days:
+                        for job in daily.jobs(notices, store):
+                            async with conn.transaction():
+                                await job.run(conn, day)
             finally:
                 await conn.close()
         finally:
