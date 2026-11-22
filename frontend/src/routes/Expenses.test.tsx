@@ -30,6 +30,8 @@ const RENT: Expense = {
   note: null,
   has_receipt: true,
   recurring_id: null,
+  extra_charge_id: null,
+  extra_charge_title: null,
   created_by_name: 'Ana Rojas',
   created_at: '2026-11-05T13:00:00Z',
   updated_at: null,
@@ -108,6 +110,12 @@ const NOVEMBER_DUE: RecurringMonth = {
   skipped: [],
 }
 
+// The gym's cobros extra, as the picker lists them (#318).
+const CHARGES = [
+  { id: 'x-trip', title: 'Viaje al nacional', category: 'gasto_compartido' },
+  { id: 'x-raffle', title: 'Rifa de fin de año', category: 'rifa' },
+]
+
 type Call = { method: string; path: string; body: unknown }
 
 function access(role: string | Permission[]) {
@@ -120,6 +128,7 @@ function stubApi(
   due: RecurringMonth = NOVEMBER_DUE,
   // How `/record` refuses, if it does: the API's 422 for the template that stops a batch.
   refuseRecord: { code: string; recurring_id: string } | null = null,
+  month: ExpenseMonth = NOVEMBER,
 ) {
   const calls: Call[] = []
   vi.stubGlobal(
@@ -136,9 +145,10 @@ function stubApi(
       }
       if (url.pathname === '/api/me/role') ok({ ...access(role), person_id: 'me', gym_name: 'Academia Sur' })
       else if (url.pathname === '/api/expenses' && method === 'GET') {
-        ok({ ...NOVEMBER, month: url.searchParams.get('month') ?? NOVEMBER.month })
+        ok({ ...month, month: url.searchParams.get('month') ?? month.month })
       } else if (url.pathname === '/api/expenses' && method === 'POST') ok({ ...RENT, id: 'e-new', amount_clp: 32_990 }, 201)
       else if (url.pathname === '/api/expenses/categories') ok(CATEGORIES)
+      else if (url.pathname === '/api/extra-charges' && method === 'GET') ok(CHARGES)
       else if (url.pathname === '/api/expenses/e-rent' && method === 'PATCH') ok({ ...RENT, amount_clp: 640_000 })
       else if (url.pathname === '/api/expenses/e-rent/void') ok({ ...RENT, voided_at: '2026-11-20T10:00:00Z' })
       else if (url.pathname === '/api/expenses/e-rent/receipt') ok({ url: 'https://blobs.example/r', content_type: 'application/pdf' })
@@ -247,6 +257,64 @@ describe('Gastos', () => {
       note: null,
       receipt_key: null,
     })
+  })
+
+  it('names the cobro extra that recovers an expense, and links to it from the row (#318)', async () => {
+    const calls = stubApi()
+    renderAt('/admin/finanzas/gastos')
+    const user = userEvent.setup()
+    await rows()
+
+    await user.click(screen.getByRole('button', { name: copy.record }))
+    const form = within(screen.getByRole('form', { name: copy.form.newTitle }))
+    const picker = await form.findByLabelText(copy.form.extraCharge, { exact: false })
+    expect(picker).toHaveValue('')
+    await user.type(form.getByLabelText(copy.form.amount), '120000')
+    await user.selectOptions(form.getByLabelText(copy.form.category), 'c-otros')
+    await user.selectOptions(picker, 'x-trip')
+    await user.click(form.getByRole('button', { name: copy.form.save }))
+
+    await screen.findByText(copy.form.saved('$32.990'))
+    const posted = calls.find((c) => c.method === 'POST' && c.path === '/api/expenses')
+    expect(posted?.body).toMatchObject({ amount_clp: 120_000, extra_charge_id: 'x-trip' })
+  })
+
+  it('shows a linked expense its cobro, by name only to who reads cobros (#318)', async () => {
+    const linked = { ...RENT, extra_charge_id: 'x-trip', extra_charge_title: 'Viaje al nacional' }
+    stubApi('owner', NOVEMBER_DUE, null, { ...NOVEMBER, items: [linked] })
+    renderAt('/admin/finanzas/gastos')
+    const user = userEvent.setup()
+    const [row] = await rows()
+
+    await user.click(within(row!).getByRole('button', { expanded: false }))
+    expect(within(row!).getByRole('link', { name: 'Viaje al nacional' })).toHaveAttribute(
+      'href',
+      '/admin/pagos/cobros/x-trip',
+    )
+  })
+
+  it('tells who does not read cobros only that an expense names one (#318)', async () => {
+    const unnamed = { ...RENT, extra_charge_id: 'x-trip', extra_charge_title: null }
+    stubApi(['expenses_read'], NOVEMBER_DUE, null, { ...NOVEMBER, items: [unnamed] })
+    renderAt('/admin/finanzas/gastos')
+    const user = userEvent.setup()
+    const [row] = await rows()
+
+    await user.click(within(row!).getByRole('button', { expanded: false }))
+    expect(within(row!).getByText(copy.recoveredByUnnamed)).toBeInTheDocument()
+    expect(within(row!).queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  it('offers no cobro to who records expenses and does not read payments, and asks for none (#318)', async () => {
+    const calls = stubApi(['expenses_read', 'expenses_write'])
+    renderAt('/admin/finanzas/gastos')
+    const user = userEvent.setup()
+    await rows()
+
+    await user.click(screen.getByRole('button', { name: copy.record }))
+    const form = within(screen.getByRole('form', { name: copy.form.newTitle }))
+    expect(form.queryByLabelText(copy.form.extraCharge, { exact: false })).not.toBeInTheDocument()
+    expect(calls.some((c) => c.path.startsWith('/api/extra-charges'))).toBe(false)
   })
 
   it('corrects an expense, and voids one only with a reason', async () => {

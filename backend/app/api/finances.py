@@ -10,6 +10,10 @@ year month by month (docs/design/expenses-and-officers.md, section 13).
 - **Salidas** is the month's expenses that count (not voided), by `spent_on`, by
   category in the gym's order. A voided expense leaves the month.
 - **Resultado** is Entradas less Salidas.
+- Under it, what of the month went through cobros extra that recover an expense
+  (#318): the month's expenses that name one ("pagado") and what the month brought in
+  on those cobros' lines ("recaudado"). Both are already in Entradas and Salidas, gross;
+  nothing nets. With `money_read` only, as Resultado is.
 
 `GET` answers a month, `GET /year` the twelve months of a year, with each category's
 months, so a category opens to them. Reading needs `expenses_read` ("Ver gastos"):
@@ -33,6 +37,7 @@ from app.schemas.finances import (
     FinanceYear,
     Income,
     MonthFigures,
+    Recovered,
 )
 from app.tenancy import Tenant, current_tenant
 
@@ -68,6 +73,31 @@ EXPENSES = text(
 )
 
 
+# The month's expenses that count and name a cobro extra (#318).
+RECOVERED_PAID = text(
+    "SELECT coalesce(sum(amount_clp), 0)::bigint FROM expense"
+    " WHERE voided_at IS NULL AND extra_charge_id IS NOT NULL"
+    " AND spent_on >= :start AND spent_on < :end"
+)
+
+# What the month brought in on the lines of every cobro an expense that counts names:
+# payments less refunds, each in the gym-local month it was validated in, as
+# `v_monthly_income` counts them (0037).
+RECOVERED_COLLECTED = text(
+    """
+    SELECT coalesce(sum(CASE WHEN e.kind = 'refund' THEN -e.amount_clp
+                             ELSE e.amount_clp END), 0)::bigint
+    FROM ledger_entry e
+    JOIN gym g ON g.id = e.gym_id
+    JOIN extra_line l ON l.id = e.extra_line_id
+    WHERE e.kind IN ('payment', 'refund') AND e.status = 'validated'
+      AND date_trunc('month', e.validated_at AT TIME ZONE g.timezone)::date = :start
+      AND EXISTS (SELECT FROM expense x
+                  WHERE x.extra_charge_id = l.extra_charge_id AND x.voided_at IS NULL)
+    """
+)
+
+
 def unprocessable(code: str, message: str) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, {"code": code, "message": message})
 
@@ -82,6 +112,16 @@ async def _income(session: AsyncSession, start: date, end: date) -> dict[date, A
 
 async def _expenses(session: AsyncSession, start: date, end: date) -> list[Any]:
     return list(await session.execute(EXPENSES, {"start": start, "end": end}))
+
+
+async def _recovered(session: AsyncSession, start: date, end: date) -> Recovered | None:
+    """The month's line under Resultado, or `None` when it would read two zeros."""
+    window = {"start": start, "end": end}
+    paid = await session.scalar(RECOVERED_PAID, window) or 0
+    collected = await session.scalar(RECOVERED_COLLECTED, window) or 0
+    if paid == 0 and collected == 0:
+        return None
+    return Recovered(paid_clp=paid, collected_clp=collected)
 
 
 @router.get("")
@@ -119,6 +159,7 @@ async def finance_month(
         income=income,
         expenses_clp=expenses_clp,
         result_clp=None if income is None else income.total_clp - expenses_clp,
+        recovered=await _recovered(session, shown, end) if sees_money else None,
         categories=categories,
     )
 

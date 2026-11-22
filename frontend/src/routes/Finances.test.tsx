@@ -18,6 +18,7 @@ const NOVEMBER: FinanceMonth = {
   income: { total_clp: 2_430_000, plans_clp: 2_110_000, extra_clp: 320_000 },
   expenses_clp: 1_512_990,
   result_clp: 917_010,
+  recovered: { paid_clp: 170_000, collected_clp: 60_000 },
   categories: [
     { category_id: 'c-arriendo', name: 'Arriendo', amount_clp: 650_000, count: 1 },
     { category_id: 'c-sueldos', name: 'Sueldos y honorarios', amount_clp: 600_000, count: 2 },
@@ -52,7 +53,7 @@ const YEAR: FinanceYear = {
   ],
 }
 
-const EXPENSES_ONLY_MONTH: FinanceMonth = { ...NOVEMBER, income: null, result_clp: null }
+const EXPENSES_ONLY_MONTH: FinanceMonth = { ...NOVEMBER, income: null, result_clp: null, recovered: null }
 const EXPENSES_ONLY_YEAR: FinanceYear = {
   ...YEAR,
   income_clp: null,
@@ -124,6 +125,8 @@ describe('Finanzas', () => {
     expect(tile(card, copy.income)).toBe('$2.430.000')
     expect(tile(card, copy.expenses)).toBe('$1.512.990')
     expect(tile(card, copy.result)).toBe('+$917.010')
+    // Under Resultado, what went through cobros extra that recover an expense (#318).
+    expect(within(card).getByText(copy.recovered('$170.000', '$60.000'))).toBeInTheDocument()
     const income = within(within(card).getByRole('region', { name: copy.income }))
     expect(income.getByText(copy.plans).nextElementSibling).toHaveTextContent('$2.110.000')
     expect(income.getByText(copy.extra).nextElementSibling).toHaveTextContent('$320.000')
@@ -156,6 +159,7 @@ describe('Finanzas', () => {
     expect(within(card).queryByText(copy.result, { selector: 'dt' })).not.toBeInTheDocument()
     expect(within(card).queryByRole('region', { name: copy.income })).not.toBeInTheDocument()
     expect(within(card).getByText(copy.onlyExpenses)).toBeInTheDocument()
+    expect(within(card).queryByText(/gastos recuperados/)).not.toBeInTheDocument()
   })
 
   it('shows the year month by month, with its totals, a later month empty', async () => {

@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getRouteApi } from '@tanstack/react-router'
+import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { refusalCode as refusal } from '../api/client'
 import {
@@ -23,7 +23,8 @@ import {
   type ExpenseMethod,
   type ReceiptChange,
 } from '../api/expenses'
-import { myAccessQuery, readsExpenses, writesExpenses } from '../api/me'
+import { chargesQuery } from '../api/extraCharges'
+import { myAccessQuery, readsExpenses, readsLedger, writesExpenses } from '../api/me'
 import { proofProblem } from '../api/proofs'
 import { useSubmit } from '../api/submit'
 import { Button, buttonClass } from '../components/Button'
@@ -356,6 +357,20 @@ function Detail({
     <div className="expenses__detail-panel">
       <p className="expenses__meta">{copy.recordedBy(expense.created_by_name, t.common.dayYear(isoDay(expense.created_at)))}</p>
       {expense.updated_at && <p className="expenses__meta">{copy.edited(t.common.dayYear(isoDay(expense.updated_at)))}</p>}
+      {expense.extra_charge_id && (
+        <p className="expenses__meta">
+          {expense.extra_charge_title ? (
+            <>
+              {copy.recoveredBy}{' '}
+              <Link to="/admin/pagos/cobros/$chargeId" params={{ chargeId: expense.extra_charge_id }}>
+                {expense.extra_charge_title}
+              </Link>
+            </>
+          ) : (
+            copy.recoveredByUnnamed
+          )}
+        </p>
+      )}
       {expense.voided_at && (
         <p className="expenses__meta expenses__meta--voided">
           {copy.voidedBy(expense.voided_by_name, expense.void_reason ?? '')}
@@ -387,6 +402,7 @@ function failureOf(error: unknown): string {
   if (code === 'receipt_taken') return copy.form.receiptTaken
   if (code === 'category_archived') return copy.form.categoryArchived
   if (code === 'already_recorded') return copy.due.alreadyRecorded
+  if (code === 'no_extra_charge') return copy.form.extraChargeGone
   return copy.form.failed
 }
 
@@ -432,6 +448,12 @@ function ExpenseForm({
     amountRef.current?.select()
   }, [from])
   const [note, setNote] = useState(expense?.note ?? '')
+  // The cobro extra that recovers it (#318): picked by who reads cobros, kept as it was
+  // by anyone else.
+  const [extraChargeId, setExtraChargeId] = useState(expense?.extra_charge_id ?? '')
+  const access = useQuery(myAccessQuery())
+  const picksCharge = readsLedger(access.data)
+  const charges = useQuery({ ...chargesQuery(), enabled: picksCharge })
   const [file, setFile] = useState<File | null>(null)
   const [removeReceipt, setRemoveReceipt] = useState(false)
   const [checked, setChecked] = useState(false)
@@ -455,6 +477,7 @@ function ExpenseForm({
     payee: payee.trim() || null,
     method: method || null,
     note: note.trim() || null,
+    extra_charge_id: extraChargeId || null,
   })
   const save = useSubmit({
     offline: 'refuse',
@@ -464,6 +487,8 @@ function ExpenseForm({
         : recordExpense(draft, receipt && receipt !== 'remove' ? receipt.file : null, from?.id ?? null),
     onSuccess: (saved: Expense) => {
       void queryClient.invalidateQueries({ queryKey: ['expenses'] })
+      // A cobro's "Gastos asociados" reads the expenses that name it.
+      void queryClient.invalidateQueries({ queryKey: ['extra', 'charge'] })
       onDone(expense ? words.changed : words.saved(clp(saved.amount_clp)), saved)
     },
   })
@@ -530,6 +555,20 @@ function ExpenseForm({
             </Select>
           )}
         </Field>
+        {picksCharge && (charges.data?.length ?? 0) > 0 && (
+          <Field label={words.extraCharge} hint={words.extraChargeHint} className="expenses__wide">
+            {(props) => (
+              <Select {...props} value={extraChargeId} onChange={(e) => setExtraChargeId(e.target.value)}>
+                <option value="">{words.noExtraCharge}</option>
+                {charges.data?.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
         <Field label={words.note} className="expenses__wide">
           {(props) => <Textarea {...props} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />}
         </Field>

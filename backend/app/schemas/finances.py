@@ -30,6 +30,18 @@ class CategoryAmount(BaseModel):
     count: int
 
 
+class Recovered(BaseModel):
+    """Of the month's result, what went through cobros extra that recover an expense
+    (#318): "De esto, gastos recuperados con cobros extra: $X pagado, $Y recaudado".
+    Already in Entradas and Salidas, both gross: nothing here nets."""
+
+    # The month's expenses that count and name a cobro extra.
+    paid_clp: int
+    # What the month brought in, net of refunds, on the lines of every cobro an expense
+    # that counts names, whichever month that expense is in.
+    collected_clp: int
+
+
 class FinanceMonth(BaseModel):
     month: date
     # The gym's current month: Finanzas goes no later.
@@ -37,6 +49,8 @@ class FinanceMonth(BaseModel):
     income: Income | None
     expenses_clp: int
     result_clp: int | None
+    # `None` without `money_read`, and in a month with neither figure.
+    recovered: Recovered | None
     # Only the categories with an expense that counts this month, in the gym's order.
     categories: list[CategoryAmount]
 

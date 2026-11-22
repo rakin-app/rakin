@@ -22,6 +22,10 @@ export type Expense = {
   has_receipt: boolean
   // The gasto fijo it was recorded from (#315).
   recurring_id: string | null
+  // The cobro extra that recovers it (#318), and its title: null to whoever does not
+  // read cobros (`money_read`), who still sees that it names one.
+  extra_charge_id: string | null
+  extra_charge_title: string | null
   created_by_name: string | null
   created_at: string
   updated_at: string | null
@@ -61,6 +65,8 @@ export type ExpenseDraft = {
   payee: string | null
   method: ExpenseMethod | null
   note: string | null
+  // The cobro extra that recovers it (#318); the picker is for who reads cobros.
+  extra_charge_id: string | null
 }
 
 /** What happens to the receipt: a new file, taken off, or left as it is. */

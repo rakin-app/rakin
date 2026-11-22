@@ -249,6 +249,20 @@ class InstalmentProgress(BaseModel):
     collected_clp: int
 
 
+class LinkedExpenses(BaseModel):
+    """What the gym paid that this cobro recovers, beside what it collected (#318):
+    "Gastos asociados $X · Recaudado $Y · Diferencia $Y-X". Both gross, as they were:
+    nothing nets, and the cobro's lines are unchanged."""
+
+    # The expenses that name the cobro and count (not voided), and their sum.
+    count: int
+    expenses_clp: int
+    # The summary's `collected_clp`: what the lines not cancelled have been paid.
+    collected_clp: int
+    # Collected less spent: below zero, the group has not paid it all back.
+    difference_clp: int
+
+
 class ExtraCharge(ExtraChargeSummary):
     description: str | None
     message: str | None
@@ -256,6 +270,9 @@ class ExtraCharge(ExtraChargeSummary):
     people: list[Line]
     # Paid and owed per instalment; one entry for a cobro paid at once.
     schedule: list[InstalmentProgress]
+    # To whoever also holds `expenses_read`: what the gym spent that it recovers.
+    # `None` without it, so the answer says nothing of expenses, not even a zero.
+    expenses: LinkedExpenses | None = None
 
 
 class LineAmountChange(BaseModel):

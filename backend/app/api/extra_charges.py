@@ -76,7 +76,7 @@ from app.domain.money import format_clp
 from app.integrations.messenger import Message, wa_me_link
 from app.notices import EXTRA_CHARGE, RECEIPT, Notice, Notices, get_notices
 from app.notices.whatsapp import extra_charge_reminder
-from app.permissions import LedgerReadSession, LedgerSession
+from app.permissions import LedgerReadSession, LedgerSession, SeesExpenses
 from app.schemas.extra_charges import (
     AmountDraft,
     CancelPreview,
@@ -90,6 +90,7 @@ from app.schemas.extra_charges import (
     LineAmountChange,
     LineCancel,
     LinePayment,
+    LinkedExpenses,
     MyExtraLine,
     Preview,
     PreviewLine,
@@ -445,6 +446,7 @@ INSERT_LINES = text(
 async def create(
     body: ExtraChargeCreate,
     session: LedgerSession,
+    sees_expenses: SeesExpenses,
     notices: Annotated[Notices, Depends(get_notices)],
     background: BackgroundTasks,
 ) -> ExtraCharge:
@@ -495,7 +497,7 @@ async def create(
             if row.instalment == 1 and row_status(row) is LineStatus.OPEN
         ]
         await notify(session, facts, owing, notices, background, reminder=False)
-    return await read_charge(session, charge_id)
+    return await read_charge(session, charge_id, sees_expenses)
 
 
 # --- reading cobros ---------------------------------------------------------------
@@ -645,7 +647,31 @@ async def charge_facts(session: AsyncSession, charge_id: uuid.UUID) -> Any:
     return found
 
 
-async def read_charge(session: AsyncSession, charge_id: uuid.UUID) -> ExtraCharge:
+# The expenses that name the cobro and count (#318), under `expenses_read`'s RLS.
+LINKED_EXPENSES = text(
+    "SELECT count(*) AS count, coalesce(sum(amount_clp), 0)::bigint AS expenses_clp"
+    " FROM expense WHERE extra_charge_id = :id AND voided_at IS NULL"
+)
+
+
+async def linked_expenses(
+    session: AsyncSession, charge_id: uuid.UUID, collected: int
+) -> LinkedExpenses:
+    """What the gym spent that the cobro recovers, beside what it has collected: both
+    gross, and nothing of the cobro's lines or billing reads it."""
+    row = (await session.execute(LINKED_EXPENSES, {"id": charge_id})).one()
+    return LinkedExpenses(
+        count=row.count,
+        expenses_clp=row.expenses_clp,
+        collected_clp=collected,
+        difference_clp=collected - row.expenses_clp,
+    )
+
+
+async def read_charge(
+    session: AsyncSession, charge_id: uuid.UUID, sees_expenses: bool = False
+) -> ExtraCharge:
+    """The cobro whole; with `sees_expenses`, the expenses it recovers too."""
     row = (await session.execute(ONE_SUMMARY, {"id": charge_id})).one_or_none()
     if row is None:
         raise NOT_FOUND
@@ -663,13 +689,19 @@ async def read_charge(session: AsyncSession, charge_id: uuid.UUID) -> ExtraCharg
         message=row.message,
         people=[to_line(line, gym, row, refundable[line.id]) for line in lines],
         schedule=[InstalmentProgress.model_validate(i, from_attributes=True) for i in schedule],
+        expenses=await linked_expenses(session, charge_id, row.collected_clp)
+        if sees_expenses
+        else None,
     )
 
 
 @router.get("/{charge_id}")
-async def get_charge(charge_id: uuid.UUID, session: LedgerReadSession) -> ExtraCharge:
-    """The cobro, with each person's line: status, amount, what they paid and any proof."""
-    return await read_charge(session, charge_id)
+async def get_charge(
+    charge_id: uuid.UUID, session: LedgerReadSession, sees_expenses: SeesExpenses
+) -> ExtraCharge:
+    """The cobro, with each person's line: status, amount, what they paid and any proof;
+    and, to whoever holds `expenses_read` too, the expenses it recovers (#318)."""
+    return await read_charge(session, charge_id, sees_expenses)
 
 
 # --- changing lines ---------------------------------------------------------------
@@ -760,7 +792,11 @@ async def cancel_preview(
 
 @router.post("/{charge_id}/lines/{line_id}/cancel")
 async def cancel_line(
-    charge_id: uuid.UUID, line_id: uuid.UUID, body: LineCancel, session: LedgerSession
+    charge_id: uuid.UUID,
+    line_id: uuid.UUID,
+    body: LineCancel,
+    session: LedgerSession,
+    sees_expenses: SeesExpenses,
 ) -> ExtraCharge:
     """Anular: the person no longer owes it, for `reason` (#256). Only a line the gym
     holds no money for and no proof waits on; refund a payment first. An adjustment is
@@ -793,7 +829,7 @@ async def cancel_line(
             text("UPDATE extra_line SET amount_due_clp = :amount WHERE id = :id"),
             {"id": other, "amount": amount},
         )
-    return await read_charge(session, charge_id)
+    return await read_charge(session, charge_id, sees_expenses)
 
 
 # --- money on a line --------------------------------------------------------------

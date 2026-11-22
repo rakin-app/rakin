@@ -3366,6 +3366,9 @@ export const es = {
       plans: 'Cuotas y planes',
       extra: 'Cobros extra',
       incomeNote: 'Lo cobrado, como lo muestra Pagos: neto de devoluciones.',
+      // Under Resultado (#318): both are already in Entradas and Salidas, nothing nets.
+      recovered: (paid: string, collected: string) =>
+        `De esto, gastos recuperados con cobros extra: ${paid} pagado, ${collected} recaudado.`,
       noExpenses: 'No hay gastos registrados en este mes.',
       noExpensesYear: 'No hay gastos registrados en este año.',
       onlyExpenses: 'Ves solo las salidas: las entradas son de quien tiene «Ver ingresos».',
@@ -3408,6 +3411,9 @@ export const es = {
       voidedBy: (name: string | null, reason: string) => (name ? `Anulado por ${name}: ${reason}` : `Anulado: ${reason}`),
       recordedBy: (name: string | null, day: string) => (name ? `Registrado por ${name} el ${day}` : `Registrado el ${day}`),
       edited: (day: string) => `Corregido el ${day}`,
+      // The cobro extra that recovers it (#318); its title only to who reads cobros.
+      recoveredBy: 'Lo recupera el cobro extra',
+      recoveredByUnnamed: 'Lo recupera un cobro extra.',
       receipt: 'Ver comprobante',
       receiptOpening: 'Abriendo…',
       receiptFailed: 'No pudimos abrir el comprobante.',
@@ -3427,6 +3433,10 @@ export const es = {
         method: 'Método',
         noMethod: 'Sin indicar',
         note: 'Nota',
+        extraCharge: 'Lo recupera un cobro extra',
+        extraChargeHint: 'Opcional: si el grupo devuelve este gasto con un cobro extra, como un viaje o un seminario. El cobro no cambia.',
+        noExtraCharge: 'Ninguno',
+        extraChargeGone: 'Ese cobro extra no existe: elige otro.',
         receipt: 'Comprobante',
         receiptHint: 'Opcional: una foto o un PDF, hasta 10 MB.',
         chooseFile: 'Elegir archivo',
@@ -3806,6 +3816,12 @@ export const es = {
         peopleLabel: 'Personas',
         // Paid and owed per instalment (#356).
         scheduleLabel: 'Cuotas',
+        // What the gym spent that this cobro recovers (#318), beside what it collected.
+        expensesLabel: 'Gastos asociados',
+        collectedLabel: 'Recaudado',
+        differenceLabel: 'Diferencia',
+        expensesCount: (n: number) => (n === 1 ? '1 gasto' : `${n} gastos`),
+        expensesNote: 'Los gastos que nombran este cobro. Finanzas cuenta ambos completos: nada se descuenta.',
         instalmentDue: (i: number, n: number, day: string) => `Cuota ${i} de ${n} · vence ${day}`,
         firstDue: (n: number, day: string) => `${n} cuotas · la primera vence ${day}`,
         // One row per person in a cobro in instalments (#417); their instalments under "Ver cuotas".
