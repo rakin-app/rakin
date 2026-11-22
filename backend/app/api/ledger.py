@@ -94,6 +94,7 @@ from app.schemas.ledger import (
     Restored,
     RestoreRecord,
     RestoreRefusal,
+    Reverted,
     TimelineEntry,
     VoidConflict,
     Voided,
@@ -982,6 +983,17 @@ VOIDED_COLUMNS = (
     " rs.void_note AS restored_void_reason, rs.void_name AS restored_void_by_name,"
     " rs.void_at AS restored_void_at"
 )
+# The revert of an adjustment (#282), for `e`, a `ledger_entry`: why, by whom, when.
+REVERTED_JOIN = """
+    LEFT JOIN LATERAL (
+        SELECT r.note, r.created_at, rb.name FROM ledger_entry r
+        LEFT JOIN gym_person rb ON rb.gym_id = r.gym_id AND rb.person_id = r.validated_by
+        WHERE e.kind = 'adjustment' AND r.corrects = e.id AND r.purpose = 'revert'
+    ) rv ON true
+"""
+REVERTED_COLUMNS = (
+    "rv.note AS revert_reason, rv.name AS revert_by_name, rv.created_at AS reverted_at"
+)
 # The entry's own purpose, and whether it is a void, as the API has said since #256.
 PURPOSE_COLUMNS = "e.purpose, coalesce(e.purpose = 'void', false) AS voids"
 
@@ -1007,6 +1019,12 @@ def restored(row: Any) -> Restored | None:
     )
 
 
+def reverted(row: Any) -> Reverted | None:
+    if row.reverted_at is None:
+        return None
+    return Reverted(reason=row.revert_reason, by_name=row.revert_by_name, at=row.reverted_at)
+
+
 def moved_with(row: Any) -> MovedWith | None:
     """The other half of a payment moved (#280), from `MOVED_COLUMNS`."""
     if row.moved_period_id is None:
@@ -1023,10 +1041,14 @@ def moved_with(row: Any) -> MovedWith | None:
 
 def timeline_entry(row: Any) -> TimelineEntry:
     fields = dict(row._mapping)
-    for column in (VOIDED_COLUMNS + "," + MOVED_COLUMNS).split(","):
+    for column in ",".join((VOIDED_COLUMNS, MOVED_COLUMNS, REVERTED_COLUMNS)).split(","):
         fields.pop(column.split(" AS ")[1].strip())
     return TimelineEntry(
-        **fields, voided=voided(row), restored=restored(row), moved=moved_with(row)
+        **fields,
+        voided=voided(row),
+        restored=restored(row),
+        moved=moved_with(row),
+        reverted=reverted(row),
     )
 
 
@@ -1035,12 +1057,14 @@ TIMELINE = text(
     SELECT e.id, e.kind, e.status, e.amount_clp, e.method, e.billing_period_id,
            bp.period_start, e.note, e.created_at, vp.name AS validated_by_name,
            e.validated_at, e.refund_of, coalesce(bp.discount_pct, 0) AS discount_pct,
-           bp.discount_reason, {PURPOSE_COLUMNS}, {VOIDED_COLUMNS}, {MOVED_COLUMNS}
+           bp.discount_reason, {PURPOSE_COLUMNS}, {VOIDED_COLUMNS}, {MOVED_COLUMNS},
+           {REVERTED_COLUMNS}
     FROM ledger_entry e
     LEFT JOIN billing_period bp ON bp.id = e.billing_period_id
     LEFT JOIN gym_person vp ON vp.gym_id = e.gym_id AND vp.person_id = e.validated_by
     {VOIDED_JOIN}
     {moved_join("e")}
+    {REVERTED_JOIN}
     WHERE e.membership_id = :id
     ORDER BY e.created_at DESC, e.id DESC
     LIMIT :limit
@@ -1315,6 +1339,9 @@ EXPECTED_STATUSES = ("active", "lapsed")
 # active and lapsed memberships, since a lapsed member still owes what was billed. A
 # cancelled membership's periods are not expected, and neither are a trial's or a
 # frozen one's, nor a period whose charge was voided (#256) and not restored (#278).
+# A period written off (#282) is: the charge was real. What was forgiven is reported
+# beside it, "Condonado", in the month the write-off was made, as a correction lands
+# (net of the write-offs reverted in it); a month already reported stays as it was.
 BOOK_KPIS = text(
     f"""
     SELECT
@@ -1332,6 +1359,14 @@ BOOK_KPIS = text(
          WHERE month = :month) AS corrected_clp,
         (SELECT coalesce(sum(corrections), 0)::bigint FROM v_monthly_income
          WHERE month = :month) AS corrections,
+        (SELECT coalesce(sum(e.amount_clp), 0)::bigint FROM ledger_entry e
+         JOIN gym g ON g.id = e.gym_id
+         WHERE (e.purpose = 'write_off' OR (e.purpose = 'revert' AND EXISTS (
+                   SELECT FROM ledger_entry w WHERE w.id = e.corrects
+                     AND w.purpose = 'write_off')))
+           AND (e.created_at AT TIME ZONE g.timezone)::date >= :month
+           AND (e.created_at AT TIME ZONE g.timezone)::date
+               < (:month + interval '1 month')::date) AS written_off_clp,
         pending.amount AS pending_clp, pending.n AS pending_payments,
         overdue.amount AS overdue_clp, overdue.members AS overdue_members,
         overdue.avg_days AS overdue_avg_days,

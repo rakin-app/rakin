@@ -40,9 +40,13 @@ import {
   recordPaymentVoid,
   recordRefund,
   recordRestore,
+  recordRevert,
   recordVoid,
+  recordWriteOff,
   shownMemberships,
   restoreRefused,
+  revertRefused,
+  writeOffRefused,
   voidMembership,
   voidRefused,
   type BillFrom,
@@ -546,15 +550,24 @@ function useOtherLedgers(memberships: readonly Membership[], shown: readonly Mem
  * line's fixes go to (#279). */
 type Charge = { membership: Membership; period: LedgerPeriod; balance: number }
 
-type ChargeFix = 'changeAmount' | 'moveDueDate' | 'voidCharge' | 'restoreCharge'
+type ChargeFix = 'changeAmount' | 'moveDueDate' | 'voidCharge' | 'restoreCharge' | 'writeOff'
 
 /** What can be done to `charge`, as a Libro line offers it (#279): a charge voided stands
- * restored, one owing falls due another day (#283) or is voided, and any is changed.
- * Nothing on a plan voided by mistake, which is assigned again. */
+ * restored, one owing falls due another day (#283), is voided or its debt forgiven (#282),
+ * and any is changed. Nothing on a plan voided by mistake, which is assigned again. */
 function chargeFixes({ membership, period }: Charge): ChargeFix[] {
   if (membership.voided_at) return []
   if (period.void_id) return ['restoreCharge']
-  return period.outstanding_clp > 0 ? ['changeAmount', 'moveDueDate', 'voidCharge'] : ['changeAmount']
+  return period.outstanding_clp > 0 ? ['changeAmount', 'moveDueDate', 'voidCharge', 'writeOff'] : ['changeAmount']
+}
+
+/** Whether `entry`, an adjustment, is reverted by "Revertir" (#282): one on a period, of
+ * no correction but a write-off, not reverted yet, on a charge not voided and a plan not
+ * voided. A void is restored instead, and a carried credit follows its payment. */
+function revertible(entry: TimelineEntry, period: LedgerPeriod | undefined, membership: Membership): boolean {
+  if (entry.kind !== 'adjustment' || entry.status !== 'validated' || !period || membership.voided_at) return false
+  if (entry.reverted || period.void_id) return false
+  return entry.purpose == null || entry.purpose === 'write_off'
 }
 
 /** "Mensual · Caducado": which plan another plan's charge is on, as #271 labels it. */
@@ -897,6 +910,8 @@ function ChargeFixes({
           <MoveDueDateForm charge={charge} onCancel={onCancel} onDone={onDone} />
         ) : fix === 'voidCharge' ? (
           <VoidChargeForm charge={charge} onCancel={onCancel} onDone={onDone} />
+        ) : fix === 'writeOff' ? (
+          <WriteOffForm charge={charge} onCancel={onCancel} onDone={onDone} />
         ) : (
           <RestoreChargeForm charge={charge} onCancel={onCancel} onDone={onDone} />
         )
@@ -1170,6 +1185,181 @@ function VoidChargeForm({
         </Button>
         <Button type="submit" variant="danger" disabled={voided.isPending} busy={voided.isPending}>
           {voided.isPending ? form.working : form.submit(clp(period.outstanding_clp))}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+/** What a refused write-off says (#282). */
+function writeOffRefusal(error: Error): string {
+  return copy.writeOffRefused[writeOffRefused(error) ?? 'failed']
+}
+
+/** "Condonar deuda" (#282): a real debt the gym will not collect. Owed nowhere once
+ * forgiven, but the charge was no mistake, so "Esperado" still counts it. A second step
+ * says so before it is saved. */
+function WriteOffForm({
+  charge,
+  onCancel,
+  onDone,
+}: {
+  charge: Charge
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.writeOffForm
+  const id = useId()
+  const { membership, period, balance } = charge
+  const month = monthName(period.period_start)
+  const owed = clp(period.outstanding_clp)
+  const [reason, setReason] = useState('')
+  const [checked, setChecked] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const reasonOk = reason.trim() !== ''
+
+  const forgiven = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => recordWriteOff({ membership_id: membership.id, billing_period_id: period.id, reason: reason.trim() }),
+    onSuccess: async () => {
+      onDone(form.done(month, owed))
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    if (!reasonOk) return
+    if (confirming) forgiven.mutate()
+    else setConfirming(true)
+  }
+
+  return (
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+      <p className="member__detail">{form.intro}</p>
+      <label htmlFor={id} className="member__label">
+        {form.reason}
+      </label>
+      <Input
+        id={id}
+        type="text"
+        maxLength={500}
+        value={reason}
+        readOnly={confirming}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      {checked && !reasonOk && (
+        <Banner tone="error">
+          {form.reasonNeeded}
+        </Banner>
+      )}
+      <FixPreview month={month} owed={[period.outstanding_clp, 0]} balance={[balance, balance - period.outstanding_clp]} />
+      {confirming && <Banner tone="info">{form.notice}</Banner>}
+      {forgiven.error && (
+        <Banner tone="error">
+          {writeOffRefusal(forgiven.error)}
+        </Banner>
+      )}
+
+      <div className="member__form-actions">
+        <Button disabled={forgiven.isPending} onClick={confirming ? () => setConfirming(false) : onCancel}>
+          {confirming ? form.back : form.cancel}
+        </Button>
+        <Button type="submit" variant="primary" disabled={forgiven.isPending} busy={forgiven.isPending}>
+          {forgiven.isPending ? form.working : confirming ? form.confirm(owed) : form.submit(owed)}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+/** What a refused revert says (#282). */
+function revertRefusal(error: Error): string {
+  return copy.revertRefused[revertRefused(error) ?? 'failed']
+}
+
+/** "Revertir" (#282): an adjustment made by mistake is undone, its period as before it.
+ * Reverting one in the member's favour is owed again; a Recargo's revert is in their favour. */
+function RevertForm({
+  entry,
+  title,
+  period,
+  balance,
+  onCancel,
+  onDone,
+}: {
+  entry: TimelineEntry
+  // The adjustment's line title, "Descuento noviembre".
+  title: string
+  period: LedgerPeriod
+  balance: number
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.revertForm
+  const id = useId()
+  const month = monthName(period.period_start)
+  const [reason, setReason] = useState('')
+  const [checked, setChecked] = useState(false)
+  const reasonOk = reason.trim() !== ''
+  // An adjustment in the member's favour (positive) is owed once reverted, and the other way round.
+  const owedAfter = Math.max(period.outstanding_clp + entry.amount_clp, 0)
+
+  const reverted = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => recordRevert({ adjustment_id: entry.id, reason: reason.trim() }),
+    onSuccess: async () => {
+      onDone(form.done(title))
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    if (reasonOk) reverted.mutate()
+  }
+
+  return (
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+      <p className="member__detail">{form.intro}</p>
+      <label htmlFor={id} className="member__label">
+        {form.reason}
+      </label>
+      <Input
+        id={id}
+        type="text"
+        maxLength={500}
+        value={reason}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      {checked && !reasonOk && (
+        <Banner tone="error">
+          {form.reasonNeeded}
+        </Banner>
+      )}
+      <FixPreview
+        month={month}
+        owed={[period.outstanding_clp, owedAfter]}
+        balance={[balance, balance + owedAfter - period.outstanding_clp]}
+      />
+      {reverted.error && (
+        <Banner tone="error">
+          {revertRefusal(reverted.error)}
+        </Banner>
+      )}
+
+      <div className="member__form-actions">
+        <Button disabled={reverted.isPending} onClick={onCancel}>
+          {form.cancel}
+        </Button>
+        <Button type="submit" variant="primary" disabled={reverted.isPending} busy={reverted.isPending}>
+          {reverted.isPending ? form.working : form.submit}
         </Button>
       </div>
     </form>
@@ -2249,6 +2439,9 @@ function ChangeAmountForm({
 
 /** A payment line's fixes, in the design's order (docs/design/billing-corrections.md, section 5). */
 const PAYMENT_FIXES = ['move', 'voidPayment', 'refund'] as const
+
+/** An adjustment line's one fix (#282). */
+const REVERT_FIXES = ['revert'] as const
 /** A payment moved in (#280) is a correction: moved again or refunded, never undone as a mistake. */
 const MOVED_PAYMENT_FIXES = ['move', 'refund'] as const
 
@@ -2733,9 +2926,28 @@ function Ledger({
   }
   const cancel = () => setFixing(null)
 
-  /** The line's fixes, if it has any: a charge's, or a payment's: "Anular pago" (#281)
-   * and its refund. */
+  /** The line's fixes, if it has any: a charge's, an adjustment's "Revertir" (#282), or a
+   * payment's: "Anular pago" (#281) and its refund. */
   const fixesOf = (entry: TimelineEntry): ReactElement | null => {
+    if (entry.kind === 'adjustment') {
+      const period = entry.billing_period_id === null ? undefined : periods.get(entry.billing_period_id)
+      if (!period || !revertible(entry, period, membership)) return null
+      const { title } = describeEntry(entry, false)
+      return (
+        <Fixes title={copy.fix.adjustment(title)} fixes={REVERT_FIXES} label={(f) => copy.fix[f]}>
+          {() => (
+            <RevertForm
+              entry={entry}
+              title={title}
+              period={period}
+              balance={ledger.balance_clp}
+              onCancel={cancel}
+              onDone={finish}
+            />
+          )}
+        </Fixes>
+      )
+    }
     if (entry.kind === 'charge') {
       const period = entry.billing_period_id === null ? undefined : periods.get(entry.billing_period_id)
       if (!period) return null
@@ -2955,6 +3167,8 @@ function correctionTitle(c: Correction): string {
     case 'ledger_corrected':
       if (c.purpose === 'void') return (c.plan_void ? words.planVoid : words.void)(month)
       if (c.purpose === 'restore') return words.restore(month)
+      if (c.purpose === 'revert') return words.revert(month)
+      if (c.purpose === 'write_off') return words.writeOff(month)
       if (c.purpose === 'mistake') return words.paymentVoid(month)
       if (c.purpose === 'move') {
         const other = c.other_period_start ? monthName(c.other_period_start) : ''
@@ -3088,7 +3302,7 @@ function describeEntry(
       }
       return { title: words.payment(month), detail: join(method, review, day), tone }
     }
-    case 'adjustment':
+    case 'adjustment': {
       if (entry.voids || entry.purpose === 'restore') {
         const by = entry.validated_by_name && words.validatedBy(entry.validated_by_name)
         const title = entry.voids ? words.void(month) : words.restore(month)
@@ -3098,11 +3312,26 @@ function describeEntry(
       if (entry.purpose === 'revert' && !entry.period_start) {
         return { title: words.creditReverted, detail: join(entry.note, day), tone: 'muted' }
       }
+      // An adjustment reverted (#282): the revert, and the adjustment it undid, saying so.
+      if (entry.purpose === 'revert') {
+        const by = entry.validated_by_name && words.validatedBy(entry.validated_by_name)
+        return { title: words.revert(month), detail: join(entry.note, by, day), tone: 'muted' }
+      }
+      const reverted = entry.reverted
+        ? words.reverted(entry.reverted.reason, entry.reverted.by_name, shortDay(entry.reverted.at))
+        : null
+      // A debt forgiven (#282): no longer owed, still expected.
+      if (entry.purpose === 'write_off') {
+        const by = entry.validated_by_name && words.validatedBy(entry.validated_by_name)
+        return { title: words.writeOff(month), detail: join(entry.note, by, day, reverted), tone: 'muted' }
+      }
       return {
         title: entry.period_start ? words.adjustment(entry.amount_clp > 0, month) : words.credit,
-        detail: join(entry.note, day),
-        tone: entry.status === 'rejected' ? 'rejected' : entry.amount_clp < 0 ? 'owed' : 'muted',
+        detail: join(entry.note, day, reverted),
+        tone:
+          entry.status === 'rejected' ? 'rejected' : entry.amount_clp < 0 && !entry.reverted ? 'owed' : 'muted',
       }
+    }
     case 'refund':
       // A payment undone as recorded by mistake (#281): no money left, unlike a refund.
       if (entry.purpose === 'mistake') {

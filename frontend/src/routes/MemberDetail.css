@@ -261,6 +261,8 @@
 .member__entry-amount {
   color: var(--tone);
   font-weight: var(--font-weight-semibold);
+  /* A signed amount stays whole beside a long detail: "−$5.000", never "−" over "$5.000". */
+  white-space: nowrap;
 }
 
 .member__entry--rejected .member__entry-amount {

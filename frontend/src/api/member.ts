@@ -125,6 +125,8 @@ export type TimelineEntry = {
   discount_reason?: string | null
   // On either half of a payment moved (#280): the other half's period, plan and person.
   moved?: MovedWith | null
+  // On an adjustment reverted (#282): why, by whom and when.
+  reverted?: Voided | null
 }
 
 /** The other half of a payment moved (backend `MovedWith`, #280). */
@@ -369,6 +371,40 @@ export function recordRestore(body: RestoreRecord): Promise<RecordedRestore> {
   return apiFetch<RecordedRestore>('/api/ledger/restores', { method: 'POST', body: JSON.stringify(body) })
 }
 
+/** Revertir un ajuste (#282): an adjustment made by mistake, undone. */
+export type RevertRecord = { adjustment_id: string; reason: string }
+
+export const REVERT_REFUSALS = [
+  'not_an_adjustment',
+  'void',
+  'correction',
+  'credit',
+  'reverted',
+  'voided',
+  'plan_voided',
+  'exceeds',
+] as const
+export type RevertRefusal = (typeof REVERT_REFUSALS)[number]
+
+/** The period as the revert leaves it: as before the adjustment. */
+export type RecordedRevert = { period: SettledPeriod }
+
+export function recordRevert(body: RevertRecord): Promise<RecordedRevert> {
+  return apiFetch<RecordedRevert>('/api/ledger/reverts', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** Condonar una deuda (#282): a real charge forgiven; "Esperado" still counts it. */
+export type WriteOffRecord = { membership_id: string; billing_period_id: string; reason: string }
+
+export type WriteOffRefusal = 'pending' | 'nothing_owed' | 'plan_voided'
+
+/** The period as the write-off leaves it: owing nothing. */
+export type RecordedWriteOff = { period: SettledPeriod }
+
+export function recordWriteOff(body: WriteOffRecord): Promise<RecordedWriteOff> {
+  return apiFetch<RecordedWriteOff>('/api/ledger/write-offs', { method: 'POST', body: JSON.stringify(body) })
+}
+
 /** Mover vencimiento (#283): "le doy hasta el 10", the period falls due on another day. */
 export type DueDateRecord = { due_date: string; reason: string }
 
@@ -571,6 +607,20 @@ export function restoreRefused(error: unknown): RestoreRefusal | null {
   if (!(error instanceof ApiError) || error.status !== 409) return null
   const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
   return code === 'not_a_void' || code === 'restored' || code === 'plan_voided' ? code : null
+}
+
+/** The 409's refusal of a revert, for the form to say why (#282). */
+export function revertRefused(error: unknown): RevertRefusal | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
+  return REVERT_REFUSALS.find((c) => c === code) ?? null
+}
+
+/** The 409's refusal of a write-off, for the form to say how to clear it (#282). */
+export function writeOffRefused(error: unknown): WriteOffRefusal | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
+  return code === 'pending' || code === 'nothing_owed' || code === 'plan_voided' ? code : null
 }
 
 export function recordRefund(body: RefundRecord): Promise<RecordedRefund> {

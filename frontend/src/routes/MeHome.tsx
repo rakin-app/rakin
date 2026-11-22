@@ -510,6 +510,9 @@ function title(payment: MyPayment, year: string): string {
   // Undone as recorded by mistake (#281), and the credit it carried with it.
   if (payment.purpose === 'mistake') return words.paymentVoid
   if (payment.purpose === 'revert' && !payment.period_start) return words.creditReverted
+  // An adjustment reverted, and a debt forgiven (#282).
+  if (payment.purpose === 'revert') return month ? `${words.reverted} ${month.toLowerCase()}` : words.reverted
+  if (payment.purpose === 'write_off') return month ? `${words.writtenOff} ${month.toLowerCase()}` : words.writtenOff
   if (payment.kind === 'adjustment' && what === null) return words.credit
   const kind = payment.kind === 'refund' ? words.refund : payment.amount_clp > 0 ? words.discount : words.surcharge
   if (payment.charge_title) return `${kind} · ${payment.charge_title}`
@@ -529,6 +532,8 @@ function amount(payment: MyPayment): string {
 function detail(payment: MyPayment, timeZone: string): string {
   const words = copy.history
   const made = when(payment.validated_at ?? payment.created_at, timeZone)
+  if (payment.purpose === 'revert' && payment.period_start) return words.revertedOn(made)
+  if (payment.purpose === 'write_off') return words.writtenOffOn(made)
   if (payment.purpose === 'mistake' || payment.purpose === 'revert') return words.voided(made)
   // Either half of a payment moved (#280), never why: out, or in from the other month.
   if (payment.purpose === 'move') {

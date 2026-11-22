@@ -539,7 +539,10 @@ def test_the_export_lists_a_payment_undone_apart_from_refunds() -> None:
     reverted = ledger_export.kind_label("adjustment", False, "revert", on_period=False)
     assert reverted == "Ajuste por pago anulado"
     # A revert on a period is not a credit's (#282): a plain adjustment here.
-    assert ledger_export.kind_label("adjustment", False, "revert", on_period=True) == "Ajuste"
+    # On a period, an adjustment reverted (#282).
+    assert ledger_export.kind_label("adjustment", False, "revert", on_period=True) == (
+        "Ajuste revertido"
+    )
     totals = ledger_export.totals(
         [
             row("Pago", 45_000),

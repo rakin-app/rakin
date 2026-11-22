@@ -80,6 +80,10 @@ CREDIT_REVERTED = "Ajuste por pago anulado"
 # in no total, as `v_monthly_income` leaves them out.
 MOVED_OUT = "Pago movido (sale)"
 MOVED_IN = "Pago movido (entra)"
+# An adjustment reverted, and a debt forgiven (#282): adjustments both, counted in "Total
+# ajustado" as any adjustment is.
+REVERTED = "Ajuste revertido"
+WRITE_OFF = "Deuda condonada"
 STATUSES = {"validated": "Validado", "pending": "Por validar", "rejected": "Rechazado"}
 METHODS = {"cash": "Efectivo", "transfer": "Transferencia", "other": "Otro"}
 # app.domain.extra_charges.Category, as the cobros screen names them.
@@ -216,8 +220,10 @@ def kind_label(kind: str, voids: bool, purpose: str | None = None, on_period: bo
         return PAYMENT_VOID
     if purpose == "move":
         return MOVED_IN if kind == "payment" else MOVED_OUT
-    if purpose == "revert" and kind == "adjustment" and not on_period:
-        return CREDIT_REVERTED
+    if purpose == "revert" and kind == "adjustment":
+        return REVERTED if on_period else CREDIT_REVERTED
+    if purpose == "write_off":
+        return WRITE_OFF
     return VOID if voids else KINDS[kind]
 
 
@@ -242,7 +248,10 @@ def totals(entries: Iterable[Row], outstanding_clp: int) -> Totals:
         charged_clp=sums.get(KINDS["charge"], 0),
         paid_clp=sums.get(KINDS["payment"], 0),
         paid_extra_clp=extra,
-        adjusted_clp=sums.get(KINDS["adjustment"], 0) + sums.get(CREDIT_REVERTED, 0),
+        adjusted_clp=sum(
+            sums.get(kind, 0)
+            for kind in (KINDS["adjustment"], CREDIT_REVERTED, REVERTED, WRITE_OFF)
+        ),
         voided_clp=sums.get(VOID, 0),
         refunded_clp=sums.get(KINDS["refund"], 0),
         outstanding_clp=outstanding_clp,

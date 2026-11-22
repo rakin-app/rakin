@@ -48,6 +48,7 @@ from app.api import (
     proofs,
     reminders,
     requirements,
+    reverts,
     schedule,
     session_blocks,
     sessions,
@@ -170,6 +171,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(corrections.router)
     app.include_router(moves.router)
     app.include_router(due_dates.router)
+    app.include_router(reverts.router)
     app.include_router(ledger_export.router)
     app.include_router(inactive.router)
     app.include_router(summary.router)
