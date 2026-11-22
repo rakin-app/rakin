@@ -463,6 +463,26 @@ def cancel(membership: Membership, reason: str) -> Membership:
     return replace(membership, status=S.CANCELLED, cancel_reason=reason.strip())
 
 
+def undo_cancel(
+    membership: Membership, *, today: date, terms: PlanTerms, lapses: bool, from_today: bool
+) -> Membership:
+    """A monthly or prepaid membership cancelled by mistake, back as it was (#285): Active,
+    or Lapsed when it `lapses`, a period past due plus grace unpaid, since the nightly job
+    would lapse it again that night. The status before the cancel is stored nowhere, so
+    this decides it. An Active one bills as a reactivation does (`reactivate`): on after
+    its last period, or `from_today`, the days between never billed. A Lapsed one bills
+    nothing, `from_today` or not, until it is reactivated. A trial or a pack is not
+    undone: the member starts a new one. The caller refuses a voided membership."""
+    if membership.status is not S.CANCELLED:
+        raise InvalidTransition(f"a {membership.status} membership has no cancel to undo")
+    if membership.plan_kind not in RECURRING:
+        raise ValueError(f"a {membership.plan_kind} membership's cancel is not undone")
+    if lapses:
+        return replace(membership, status=S.LAPSED, cancel_reason=None)
+    undone = replace(membership, status=S.LAPSED, cancel_reason=None)
+    return reactivate(undone, today=today, terms=terms, from_today=from_today)
+
+
 # The reason a trial still running carries when a paid plan converts it (#27).
 CONVERTED_REASON = "pasó a un plan"
 

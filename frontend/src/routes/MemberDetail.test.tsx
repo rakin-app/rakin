@@ -4718,3 +4718,123 @@ describe('Requisitos on the ficha (#349)', () => {
     expect(calls.some((c) => c.method === 'POST' && c.path.includes('/requirements/'))).toBe(false)
   })
 })
+
+describe('Deshacer baja (#285)', () => {
+  const CANCELLED: Membership = { ...MONTHLY, status: 'cancelled' }
+  const QUOTE = {
+    status: 'active',
+    last: {
+      bills_from: '2026-09-30',
+      periods: [
+        { period_start: '2026-09-30', period_end: '2026-10-29', due_date: '2026-09-30', amount_due_clp: 45000 },
+        { period_start: '2026-10-30', period_end: '2026-11-29', due_date: '2026-10-30', amount_due_clp: 45000 },
+      ],
+      total_clp: 90000,
+    },
+    today: {
+      bills_from: '2026-11-10',
+      periods: [{ period_start: '2026-11-10', period_end: '2026-12-09', due_date: '2026-11-10', amount_due_clp: 45000 }],
+      total_clp: 45000,
+    },
+  }
+  const form = copy.uncancelForm
+
+  function stubUncancel(quote: { status?: number; body: unknown } = { body: QUOTE }, back = 'active') {
+    return stubApi({
+      memberships: [CANCELLED],
+      extra: (path, method) => {
+        if (path !== '/api/memberships/m-felipe/uncancel') return undefined
+        return method === 'POST' ? { body: { ...MONTHLY, status: back } } : quote
+      },
+    })
+  }
+
+  async function openUncancel() {
+    const card = await money()
+    await userEvent.click(await planAction(card, copy.fix.plan))
+    const choices = within(card).getByRole('group', { name: copy.fix.plan })
+    await userEvent.click(within(choices).getByRole('button', { name: copy.uncancelPlan }))
+    return card
+  }
+
+  it('undoes a cancel under "Corregir plan", from where it left off, listing what it bills first', async () => {
+    const calls = stubUncancel()
+    renderAt(PATH)
+    await openUncancel()
+
+    const opened = screen.getByRole('form', { name: form.title })
+    expect(within(opened).getByText(form.intro)).toBeInTheDocument()
+    expect(await within(opened).findByRole('radio', { name: new RegExp(form.last) })).toBeChecked()
+    expect(within(opened).getByText(form.lastHint(2, 'septiembre', '$90.000'))).toBeInTheDocument()
+    expect(within(opened).getByText(form.todayHint('10 nov', '$45.000'))).toBeInTheDocument()
+
+    await userEvent.click(within(opened).getByRole('button', { name: form.next }))
+    expect(within(opened).getByText(form.reasonNeeded)).toBeInTheDocument()
+    await userEvent.type(within(opened).getByLabelText(form.reason), 'fue un error')
+    await userEvent.click(within(opened).getByRole('button', { name: form.next }))
+
+    // The confirmation step: what it bills, nothing saved yet.
+    const confirm = screen.getByRole('form', { name: form.title })
+    expect(within(confirm).getByText(form.confirmTitle)).toBeInTheDocument()
+    expect(within(confirm).getByText(form.total('$90.000'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(confirm).getByRole('button', { name: form.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(form.done('$90.000'))
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/memberships/m-felipe/uncancel', body: { reason: 'fue un error', bill_from: 'last' } },
+    ])
+  })
+
+  it('undoes it from today', async () => {
+    const calls = stubUncancel()
+    renderAt(PATH)
+    await openUncancel()
+
+    const opened = screen.getByRole('form', { name: form.title })
+    await userEvent.click(await within(opened).findByRole('radio', { name: new RegExp(form.today) }))
+    await userEvent.type(within(opened).getByLabelText(form.reason), 'fue un error')
+    await userEvent.click(within(opened).getByRole('button', { name: form.next }))
+    expect(within(opened).getByText(form.period('noviembre', '$45.000'))).toBeInTheDocument()
+    await userEvent.click(within(opened).getByRole('button', { name: form.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(form.done('$45.000'))
+    expect(calls.filter((c) => c.method === 'POST')[0]?.body).toEqual({ reason: 'fue un error', bill_from: 'today' })
+  })
+
+  it('says the plan comes back lapsed, billing nothing, while a period past grace is unpaid', async () => {
+    const nothing = { bills_from: '2026-09-30', periods: [], total_clp: 0 }
+    stubUncancel({ body: { status: 'lapsed', last: nothing, today: nothing } }, 'lapsed')
+    renderAt(PATH)
+    await openUncancel()
+
+    const opened = screen.getByRole('form', { name: form.title })
+    expect(await within(opened).findByText(form.introLapsed)).toBeInTheDocument()
+    expect(within(opened).queryByRole('radio')).not.toBeInTheDocument()
+    await userEvent.type(within(opened).getByLabelText(form.reason), 'fue un error')
+    await userEvent.click(within(opened).getByRole('button', { name: form.next }))
+    expect(within(opened).getByText(form.confirmLapsed)).toBeInTheDocument()
+    await userEvent.click(within(opened).getByRole('button', { name: form.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(form.doneLapsed)
+  })
+
+  it('says so beside another live plan, and where to move the payments', async () => {
+    stubUncancel({ status: 409, body: { detail: { code: 'live_plan', message: 'live', plan_name: 'Mensual niños' } } })
+    renderAt(PATH)
+    await openUncancel()
+    expect(await screen.findByRole('alert')).toHaveTextContent(form.live_plan('Mensual niños'))
+  })
+
+  it.each([
+    ['a plan not cancelled', MONTHLY],
+    ['a voided plan', { ...CANCELLED, voided_at: '2026-11-08T12:00:00Z', void_reason: 'prueba' }],
+  ])('is not offered on %s', async (_, membership) => {
+    stubApi({ memberships: [membership] })
+    renderAt(PATH)
+    const card = await money()
+    await userEvent.click(await planAction(card, copy.fix.plan))
+    expect(within(card).getByRole('group', { name: copy.fix.plan })).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: copy.uncancelPlan })).not.toBeInTheDocument()
+  })
+})

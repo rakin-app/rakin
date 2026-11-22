@@ -29,8 +29,9 @@ import {
   moveRefused,
   moveTargetsQuery,
   personQuery,
-  reactivateMembership,
-  reactivationQuery,
+  bringBack,
+  bringBackQuery,
+  type BringBack,
   reactivationRefused,
   recordAdjustment,
   recordMove,
@@ -625,6 +626,7 @@ type Open =
   | 'discount'
   | 'fixPlan'
   | 'voidPlan'
+  | 'uncancelPlan'
   | 'reactivate'
   | 'assign'
   | null
@@ -680,7 +682,9 @@ function Actions({
     !membership.voided_at &&
     (membership.plan_kind === 'monthly' || membership.plan_kind === 'prepaid' || membership.plan_kind === 'fixed_period')
   // "Corregir plan" stays open while one of its fixes is.
-  const fixingPlan = open === 'fixPlan' || open === 'voidPlan'
+  const fixingPlan = open === 'fixPlan' || open === 'voidPlan' || open === 'uncancelPlan'
+  // Dado de baja by mistake: "Deshacer baja" brings it back (#285). A voided plan stays voided.
+  const uncancels = membership.status === 'cancelled' && !membership.voided_at
 
   const offered: Action[] = [
     ...(reactivates ? (['reactivate'] as const) : []),
@@ -756,6 +760,14 @@ function Actions({
       {/* Fixing the plan as a whole (#279): voided with a reason (#256), or a cobro extra. */}
       {fixingPlan && (
         <div className="member__fix-choices" role="group" aria-label={copy.fix.plan}>
+          {uncancels && (
+            <Chip
+              pressed={open === 'uncancelPlan'}
+              onClick={() => setOpen(open === 'uncancelPlan' ? 'fixPlan' : 'uncancelPlan')}
+            >
+              {copy.uncancelPlan}
+            </Chip>
+          )}
           {!membership.voided_at && (
             <Chip pressed={open === 'voidPlan'} onClick={() => setOpen(open === 'voidPlan' ? 'fixPlan' : 'voidPlan')}>
               {copy.voidPlan}
@@ -825,6 +837,9 @@ function Actions({
       )}
       {open === 'reactivate' && reactivates && (
         <ReactivateForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'uncancelPlan' && uncancels && (
+        <ReactivateForm mode="uncancel" membership={membership} onCancel={() => setOpen('fixPlan')} onDone={finish} />
       )}
       {open === 'assign' && assign && (
         <AssignForm
@@ -1446,16 +1461,19 @@ function VoidPlanForm({
   )
 }
 
-/** What a refused reactivation says, and what to do first (#284). */
-function reactivateRefusal(error: Error): string {
+/** What a refused reactivation (#284) or undone cancel (#285) says, and what to do first. */
+function reactivateRefusal(error: Error, mode: BringBack = 'reactivate'): string {
   const words = copy.reactivateRefused
   const refused = reactivationRefused(error)
-  if (!refused) return words.failed
+  if (!refused) return mode === 'uncancel' ? copy.uncancelForm.failed : words.failed
   if (refused.code === 'unpaid') {
     const month = refused.period_start ? monthName(refused.period_start) : ''
     return words.unpaid(clp(refused.amount_clp ?? 0), month)
   }
-  if (refused.code === 'live_plan') return words.live_plan(refused.plan_name ?? '')
+  if (refused.code === 'live_plan') {
+    // Beside another plan started since, the payments can be moved to it instead.
+    return (mode === 'uncancel' ? copy.uncancelForm.live_plan : words.live_plan)(refused.plan_name ?? '')
+  }
   return words[refused.code]
 }
 
@@ -1464,20 +1482,29 @@ const BILL_FROM: readonly BillFrom[] = ['last', 'today']
 /** "Reactivar plan" (#284): a lapsed plan Active again, with a reason, billing from where
  * it left off (the months since the lapse, at once) or from today. A second step lists
  * what it bills before it saves. Refused, with what to do first, while a period past grace
- * is unpaid or beside another live plan. */
+ * is unpaid or beside another live plan.
+ *
+ * With `mode="uncancel"`, "Deshacer baja" (#285): a plan dado de baja by mistake back as it
+ * was, billing as a reactivation does; or back Lapsed, billing nothing and offering no
+ * choice, when a period past grace is unpaid. */
 function ReactivateForm({
   membership,
+  mode = 'reactivate',
   onCancel,
   onDone,
 }: {
   membership: Membership
+  mode?: BringBack
   onCancel: () => void
   onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
-  const form = copy.reactivateForm
+  const uncancel = mode === 'uncancel'
+  const form = uncancel ? copy.uncancelForm : copy.reactivateForm
   const id = useId()
-  const quote = useQuery(reactivationQuery(membership.id))
+  const quote = useQuery(bringBackQuery(membership.id, mode))
+  // Back Lapsed (#285): nothing billed, so no choice of from when.
+  const lapsed = quote.data?.status === 'lapsed'
   const [billFrom, setBillFrom] = useState<BillFrom>('last')
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
@@ -1487,10 +1514,11 @@ function ReactivateForm({
 
   const reactivated = useSubmit({
     offline: 'refuse',
-    mutationFn: () => reactivateMembership(membership.id, reason.trim(), billFrom),
+    mutationFn: () => bringBack(membership.id, mode, reason.trim(), billFrom),
     onSuccess: async () => {
       const total = bill?.total_clp ?? 0
-      onDone(total > 0 ? form.done(clp(total)) : form.doneNothing)
+      if (lapsed) onDone(copy.uncancelForm.doneLapsed)
+      else onDone(total > 0 ? form.done(clp(total)) : form.doneNothing)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['ledger'] }),
         queryClient.invalidateQueries({ queryKey: ['people'] }),
@@ -1512,7 +1540,7 @@ function ReactivateForm({
       <Card as="div" className="member__form" role="group" aria-label={form.title}>
         {quote.isError ? (
           <Banner tone="error">
-            {reactivateRefusal(quote.error)}
+            {reactivateRefusal(quote.error, mode)}
           </Banner>
         ) : (
           <Loading className="member__detail" role="status">
@@ -1528,7 +1556,7 @@ function ReactivateForm({
 
   const { last, today } = quote.data
   // Billed past yesterday already, there is no gap to skip: one way to bill, no choice.
-  const choice = today.bills_from !== last.bills_from
+  const choice = !lapsed && today.bills_from !== last.bills_from
   const hints: Record<BillFrom, string> = {
     last: form.lastHint(last.periods.length, monthName(last.bills_from), clp(last.total_clp)),
     today: form.todayHint(shortDay(today.bills_from), clp(today.total_clp)),
@@ -1537,8 +1565,12 @@ function ReactivateForm({
   if (confirming && bill) {
     return (
       <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
-        <p className="member__label">{form.confirmTitle}</p>
-        {bill.periods.length > 0 ? (
+        {lapsed ? (
+          <p className="member__detail">{copy.uncancelForm.confirmLapsed}</p>
+        ) : (
+          <p className="member__label">{form.confirmTitle}</p>
+        )}
+        {lapsed ? null : bill.periods.length > 0 ? (
           <PlainList className="member__bill">
             {bill.periods.map((p) => (
               <li key={p.period_start}>{form.period(monthName(p.period_start), clp(p.amount_due_clp))}</li>
@@ -1550,7 +1582,7 @@ function ReactivateForm({
         )}
         {reactivated.error && (
           <Banner tone="error">
-            {reactivateRefusal(reactivated.error)}
+            {reactivateRefusal(reactivated.error, mode)}
           </Banner>
         )}
         <div className="member__form-actions">
@@ -1567,8 +1599,8 @@ function ReactivateForm({
 
   return (
     <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
-      <p className="member__detail">{form.intro}</p>
-      {!choice && <p className="member__detail">{hints.last}</p>}
+      <p className="member__detail">{lapsed ? copy.uncancelForm.introLapsed : form.intro}</p>
+      {!choice && !lapsed && <p className="member__detail">{hints.last}</p>}
       {choice && (
         <fieldset className="member__choices">
           <legend className="member__label">{form.billFrom}</legend>

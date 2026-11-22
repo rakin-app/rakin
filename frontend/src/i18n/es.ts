@@ -1667,7 +1667,48 @@ export const es = {
         unpaid: (amount: string, month: string) =>
           `Debe ${amount} desde ${month}, ya fuera del plazo de gracia: caducaría de nuevo esta noche. Registra el pago o anula ese cargo primero.`,
         live_plan: (plan: string) => `Ya tiene otro plan vigente (${plan}): no puede tener dos a la vez.`,
+        not_cancelled: 'Este plan no está dado de baja.',
+        voided: 'Un plan anulado no se recupera.',
+        get has_left() {
+          return `Dejó ${w.thePlace}: reactíva${w.memberIs('lo', 'la')} primero en su ficha.`
+        },
         failed: 'No pudimos reactivarlo. Inténtalo de nuevo.',
+      },
+      // "Deshacer baja" (#285): a plan dado de baja by mistake, back as it was.
+      uncancelPlan: 'Deshacer baja',
+      uncancelForm: {
+        title: 'Deshacer baja',
+        intro: 'Si la baja fue un error, el plan vuelve a quedar activo, sin el motivo de la baja.',
+        introLapsed:
+          'Tiene una cuota sin pagar fuera del plazo de gracia: el plan vuelve caducado y no cobra nada nuevo. Reactívalo cuando pague.',
+        loading: 'Calculando lo que se cobra…',
+        billFrom: '¿Desde cuándo se cobra?',
+        last: 'Desde donde quedó',
+        lastHint: (count: number, month: string, total: string) =>
+          count === 0
+            ? 'No hay cuotas pendientes desde la baja.'
+            : `Cobra ${count === 1 ? 'la cuota' : `${count} cuotas`} desde ${month}: ${total}.`,
+        today: 'Desde hoy',
+        todayHint: (day: string, total: string) => `No cobra los meses de baja. Cobra desde el ${day}: ${total}.`,
+        reason: 'Motivo',
+        reasonNeeded: 'Escribe por qué se deshace la baja.',
+        next: 'Continuar',
+        cancel: 'Cancelar',
+        confirmTitle: 'Al deshacer la baja se cobra',
+        confirmLapsed: 'El plan vuelve caducado. No se cobra nada nuevo.',
+        nothing: 'Nada por ahora: la próxima cuota llega en su fecha.',
+        period: (month: string, amount: string) => `${month} · ${amount}`,
+        total: (amount: string) => `Total ${amount}`,
+        back: 'Volver',
+        submit: 'Deshacer baja',
+        working: 'Deshaciendo…',
+        done: (total: string) => `Baja deshecha. Se cobraron ${total}.`,
+        doneNothing: 'Baja deshecha. El plan vuelve a estar activo.',
+        doneLapsed: 'Baja deshecha. El plan quedó caducado: reactívalo cuando pague.',
+        failed: 'No pudimos deshacer la baja. Inténtalo de nuevo.',
+        // Another plan started since: two at once is refused. The payments can go to it instead.
+        live_plan: (plan: string) =>
+          `Ya tiene otro plan vigente (${plan}): no puede tener dos a la vez. Si sus pagos eran para ese plan, muévelos con «Mover pago» en el Libro.`,
       },
       // After a payment settles the last debt of a lapsed plan: offered, never done on its own.
       reactivateOffer: '¿Volvió? El plan sigue caducado hasta que lo reactives.',

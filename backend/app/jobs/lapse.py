@@ -15,7 +15,9 @@ transaction, for the plan-event emails to send.
   it was created, in the gym's timezone: the owner has the whole grace from then to
   record the payment, so it lapses on `max(due_date, created_on) + grace` (#271). A
   lapsed plan reactivated by hand (#284) is not due before the day it was reactivated
-  either: its periods since the lapse are billed then, already past due.
+  either: its periods since the lapse are billed then, already past due. Nor is a plan
+  whose cancel was undone (#285), from the day it was undone, for its periods since the
+  cancel.
 - A credits pack or a trial lapses with no grace, the day after its last day
   (`current_period_end`) or at zero credits left.
 - A drop-in is a single attendance and never lapses; a Frozen membership waits for
@@ -84,9 +86,11 @@ def unpaid_due(day: str, status: str, kinds: str) -> str:
 
 
 # The days membership `m` is not due before, in its gym `g`'s timezone: the day it was
-# created (#271), and the day it was last reactivated (#284), null if never.
+# created (#271), and the day it was last reactivated (#284) or its cancel undone (#285),
+# the later of the two, null if neither.
 NOT_DUE_BEFORE = """(m.created_at AT TIME ZONE g.timezone)::date AS created_on,
-       (m.reactivated_at AT TIME ZONE g.timezone)::date AS reactivated_on"""
+       (greatest(m.reactivated_at, m.cancel_undone_at) AT TIME ZONE g.timezone)::date
+           AS reactivated_on"""
 
 
 # Read after the lock, in a statement of its own: in READ COMMITTED each statement takes
