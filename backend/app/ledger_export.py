@@ -84,6 +84,10 @@ MOVED_IN = "Pago movido (entra)"
 # ajustado" as any adjustment is.
 REVERTED = "Ajuste revertido"
 WRITE_OFF = "Deuda condonada"
+# A month paid before the gym used Rakin ("Pagado hasta", #286): it settles its period,
+# but that money was not received in the month, so it is in no total, as
+# `v_monthly_income` leaves it out (0093).
+PAID_BEFORE = "Pagado antes de Rakin"
 STATUSES = {"validated": "Validado", "pending": "Por validar", "rejected": "Rechazado"}
 METHODS = {"cash": "Efectivo", "transfer": "Transferencia", "other": "Otro"}
 # app.domain.extra_charges.Category, as the cobros screen names them.
@@ -224,6 +228,8 @@ def kind_label(kind: str, voids: bool, purpose: str | None = None, on_period: bo
         return REVERTED if on_period else CREDIT_REVERTED
     if purpose == "write_off":
         return WRITE_OFF
+    if purpose == "paid_before":
+        return PAID_BEFORE
     return VOID if voids else KINDS[kind]
 
 

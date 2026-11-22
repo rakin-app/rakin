@@ -488,6 +488,16 @@ def periods_ahead(billable: Billable, count: int) -> Billing:
     return _billing(billable, lambda _, billed: billed < count)
 
 
+def periods_through(billable: Billable, through: date, limit: int) -> Billing:
+    """The periods of an Active monthly or prepaid membership not billed yet that start
+    on or before `through`, at most `limit` of them, oldest first, for "Pagado hasta"
+    (#286): billed as paying ahead bills them (`periods_ahead`). None for any other."""
+    if billable.plan.terms.kind not in PAID_AHEAD:
+        return Billing((), plan_changed=False, plan=billable.plan, anchor_day=billable.anchor_day)
+    # A monthly or prepaid period falls due on its first day.
+    return _billing(billable, lambda due, billed: due <= through and billed < limit)
+
+
 def _billing(billable: Billable, more: Callable[[date, int], bool]) -> Billing:
     """The periods `billable` owes from the first day not billed, oldest first, while
     `more(due date, periods so far)` says another falling due then is billed."""

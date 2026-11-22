@@ -58,6 +58,7 @@ import {
   type Membership,
   type MembershipLedger,
   type Method,
+  METHODS,
   type MoveTarget,
   type OpenPeriod,
   type Person,
@@ -93,6 +94,7 @@ import { FamilyPanel } from './FamilyPanel'
 import { PersonActions } from './PersonActions'
 import { GradeForm } from './GradeForm'
 import { PersonExtraLines } from './PersonExtraLines'
+import { PaidThroughForm, paysThrough } from './PaidThroughForm'
 import { PersonHistory } from './PersonHistory'
 import { PersonData } from './PersonData'
 import { PersonConsent } from './PersonConsent'
@@ -627,6 +629,7 @@ type Open =
   | 'fixPlan'
   | 'voidPlan'
   | 'uncancelPlan'
+  | 'paidThrough'
   | 'reactivate'
   | 'assign'
   | null
@@ -682,7 +685,7 @@ function Actions({
     !membership.voided_at &&
     (membership.plan_kind === 'monthly' || membership.plan_kind === 'prepaid' || membership.plan_kind === 'fixed_period')
   // "Corregir plan" stays open while one of its fixes is.
-  const fixingPlan = open === 'fixPlan' || open === 'voidPlan' || open === 'uncancelPlan'
+  const fixingPlan = open === 'fixPlan' || open === 'voidPlan' || open === 'uncancelPlan' || open === 'paidThrough'
   // Dado de baja by mistake: "Deshacer baja" brings it back (#285). A voided plan stays voided.
   const uncancels = membership.status === 'cancelled' && !membership.voided_at
 
@@ -768,6 +771,14 @@ function Actions({
               {copy.uncancelPlan}
             </Chip>
           )}
+          {paysThrough(membership) && (
+            <Chip
+              pressed={open === 'paidThrough'}
+              onClick={() => setOpen(open === 'paidThrough' ? 'fixPlan' : 'paidThrough')}
+            >
+              {copy.paidThroughPlan}
+            </Chip>
+          )}
           {!membership.voided_at && (
             <Chip pressed={open === 'voidPlan'} onClick={() => setOpen(open === 'voidPlan' ? 'fixPlan' : 'voidPlan')}>
               {copy.voidPlan}
@@ -837,6 +848,9 @@ function Actions({
       )}
       {open === 'reactivate' && reactivates && (
         <ReactivateForm membership={membership} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
+      {open === 'paidThrough' && paysThrough(membership) && (
+        <PaidThroughForm membership={membership} onCancel={() => setOpen('fixPlan')} onDone={finish} />
       )}
       {open === 'uncancelPlan' && uncancels && (
         <ReactivateForm mode="uncancel" membership={membership} onCancel={() => setOpen('fixPlan')} onDone={finish} />
@@ -1921,8 +1935,6 @@ function EndFreezeForm({
     </form>
   )
 }
-
-const METHODS: readonly Method[] = ['cash', 'transfer', 'other']
 
 /** "Registrar pago" for one of the membership's open periods; the book's header opens
  *  it too, once a member is picked (#107). */
@@ -3202,6 +3214,7 @@ function correctionTitle(c: Correction): string {
       if (c.purpose === 'revert') return words.revert(month)
       if (c.purpose === 'write_off') return words.writeOff(month)
       if (c.purpose === 'mistake') return words.paymentVoid(month)
+      if (c.paid_through) return (c.paid_through === 'paid' ? words.paidBefore : words.gift)(month)
       if (c.purpose === 'move') {
         const other = c.other_period_start ? monthName(c.other_period_start) : ''
         return c.moved === 'in' ? words.movedIn(month, other) : words.movedOut(month, other)
@@ -3331,6 +3344,10 @@ function describeEntry(
           detail: join(elsewhere, entry.note, review, day),
           tone,
         }
+      }
+      // A month paid before Rakin (#286): it settles the period, and is no income of the month.
+      if (entry.purpose === 'paid_before') {
+        return { title: `${words.payment(month)} · ${words.paidBefore}`, detail: join(method, review, day), tone }
       }
       return { title: words.payment(month), detail: join(method, review, day), tone }
     }

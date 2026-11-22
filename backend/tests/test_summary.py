@@ -606,6 +606,45 @@ def test_a_payment_staff_moved_is_not_one_of_the_months_payments(
     assert page["own_payments"] == {"by_members": 1, "payments": 1, "percent": None}
 
 
+def paid_before(
+    db: Database, gym: uuid.UUID, membership: uuid.UUID, period: uuid.UUID, *, at: datetime
+) -> None:
+    """A month paid before Rakin, as "Pagado hasta" (#286) writes it: a validated payment
+    recorded by staff at `at`, `purpose = 'paid_before'`."""
+    owner = seeded_owner(gym)
+    admin(
+        db,
+        "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
+        " kind, status, method, claimed_by, claimed_at, created_at, validated_by,"
+        " validated_at, purpose, note) VALUES ($1, $2, $3, 30000, 'payment', 'validated',"
+        " 'cash', $4, $5, $5, $4, $5, 'paid_before', 'Pagado antes de Rakin')",
+        gym,
+        membership,
+        period,
+        owner,
+        at,
+    )
+
+
+@pg
+def test_a_month_paid_before_rakin_is_no_payment_of_the_month_nor_after_a_reminder(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    # The overdue job nagged a period a gym moving onto Rakin left owing; the owner then
+    # records it as paid before Rakin. That money was not received this month, and no
+    # reminder brought it in.
+    person, membership = a_member(db, gym)
+    period = a_period(db, gym, membership)
+    emailed(db, gym, person, period, local(day(1), 9))
+    whatsapped(db, gym, person, period, local(day(2), 9))
+    paid_before(db, gym, membership, period, at=local(day(3)))
+
+    page = summary(client, gym)
+
+    assert (page["income_clp"], page["income_payments"]) == (0, 0)
+    assert after(client, gym) == (0, 0, 0)
+
+
 # --- corrections: a payment undone, a payment moved (#543) -------------------------
 
 

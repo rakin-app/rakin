@@ -39,6 +39,7 @@ from app.api import (
     member_roll,
     memberships,
     moves,
+    paid_through,
     people,
     plans,
     platform,
@@ -172,6 +173,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(moves.router)
     app.include_router(due_dates.router)
     app.include_router(reverts.router)
+    app.include_router(paid_through.router)
     app.include_router(ledger_export.router)
     app.include_router(inactive.router)
     app.include_router(summary.router)

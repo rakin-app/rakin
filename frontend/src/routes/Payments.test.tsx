@@ -326,6 +326,15 @@ describe('Pagos', () => {
     expect(kpis.textContent).toContain(copy.kpis.writtenOff('$45.000'))
   })
 
+  it('labels a month paid before Rakin apart from the payments (#286)', async () => {
+    const before = entry({ id: 'pb', kind: 'payment', method: 'cash', note: 'Pagado antes de Rakin', purpose: 'paid_before' })
+    stubApi({ book: () => ({ ...BOOK, items: [before], total: 1 }) })
+    renderAt('/admin/pagos')
+
+    const rows = within(await table()).getAllByRole('row').slice(1)
+    expect(rows.map((row) => cells(row)[2])).toEqual([copy.paidBefore])
+  })
+
   it('labels both halves of a payment moved, neither income nor a refund (#280)', async () => {
     const out = entry({ id: 'out', kind: 'refund', method: null, note: 'era de diciembre', refund_of: 'pay', purpose: 'move' })
     const into = entry({ id: 'in', kind: 'payment', method: 'transfer', note: 'era de diciembre', purpose: 'move' })

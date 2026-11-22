@@ -1674,6 +1674,47 @@ export const es = {
         },
         failed: 'No pudimos reactivarlo. Inténtalo de nuevo.',
       },
+      // "Pagado hasta…" (#286): the months up to a date paid before Rakin, or given, written one by one.
+      paidThroughPlan: 'Pagado hasta…',
+      paidThroughForm: {
+        title: 'Pagado hasta…',
+        intro:
+          'Para meses que pagó antes de usar Rakin, o que le regalan. Se registra un pago o una bonificación en cada mes hasta esa fecha.',
+        through: 'Pagado hasta el',
+        how: '¿Cómo quedan esos meses?',
+        paid: 'Los pagó',
+        paidHint: 'Un pago por mes, «Pagado antes de Rakin»: el mes queda pagado, pero no cuenta como ingreso de este mes. No se envía recibo.',
+        gift: 'Se los regalamos',
+        giftHint: 'Una bonificación por mes: no cuenta como ingreso.',
+        method: 'Medio de pago',
+        loading: 'Calculando los meses…',
+        quoteTitle: 'Se registran',
+        period: (month: string, amount: string) => `${month} · ${amount}`,
+        total: (amount: string) => `Total ${amount}`,
+        result: (day: string) => `Queda pagado hasta el ${day}.`,
+        dayNeeded: 'Elige hasta qué día pagó.',
+        history: 'Ir al historial',
+        cancel: 'Cancelar',
+        submit: (amount: string) => `Registrar ${amount}`,
+        // Before a date is chosen, with no total yet.
+        submitPaid: 'Registrar pagos',
+        submitGift: 'Registrar bonificación',
+        working: 'Registrando…',
+        done: (amount: string, day: string) => `Registrado: ${amount} pagados antes de Rakin. Pagado hasta el ${day}.`,
+        doneGift: (day: string) => `Bonificación registrada. Pagado hasta el ${day}.`,
+      },
+      // Why "Pagado hasta" refused a date, and what to do instead.
+      paidThroughRefused: {
+        cannot: 'Solo un plan mensual o prepagado activo se registra hasta una fecha.',
+        before_plan: (day: string) => `Antes de su plan (empezó el ${day}): agrégalo al historial.`,
+        already_paid: (day: string) => `Ya está pagado hasta el ${day}.`,
+        too_far: 'Es demasiado adelante: hasta 12 meses que no se han cobrado aún.',
+        pending: 'Tiene un comprobante por validar en esos meses: revísalo primero.',
+        amount_changed: 'Lo que se debe cambió. Revisa el total y vuelve a intentarlo.',
+        failed: 'No pudimos registrarlo. Inténtalo de nuevo.',
+        // The quote itself failed: a date out of range, say.
+        quoteFailed: 'No pudimos calcular los meses. Revisa la fecha.',
+      },
       // "Deshacer baja" (#285): a plan dado de baja by mistake, back as it was.
       uncancelPlan: 'Deshacer baja',
       uncancelForm: {
@@ -1951,6 +1992,8 @@ export const es = {
         // person when it is not this plan's.
         movedTo: (month: string) => `Movido a ${month}`,
         movedFrom: (month: string) => `Movido de ${month}`,
+        // A month paid before Rakin (#286): settled, but no income of the month it was recorded.
+        paidBefore: 'Pagado antes de Rakin',
         movedElsewhere: (plan: string, person: string | null) => (person ? `${plan} · ${person}` : plan),
         all: (n: number) => `Ver todo el libro (${n})`,
         fewer: 'Ver menos',
@@ -1976,6 +2019,9 @@ export const es = {
         dates: (before: string, after: string) => `${before} → ${after}`,
         reactivated: 'Reactivó el plan',
         cancelUndone: 'Deshizo la baja',
+        // "Pagado hasta" (#286): a month paid before Rakin, or given.
+        paidBefore: (month: string) => `Pagado antes de Rakin ${month}`,
+        gift: (month: string) => `Bonificación ${month}`,
         // A discount set, changed or taken off (#25): its percentage before → after, and from when.
         discountSet: 'Puso descuento',
         discountChanged: 'Cambió el descuento',
@@ -3603,6 +3649,8 @@ export const es = {
       writeOff: 'Deuda condonada',
       // Either half of a payment moved to another period (#280): neither income nor a refund.
       moved: { out: 'Pago movido (sale)', in: 'Pago movido (entra)' },
+      // A month paid before Rakin (#286): it settles its period, and is in no income total.
+      paidBefore: 'Pagado antes de Rakin',
       kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
       // An adjustment on a period by which way it goes (#210), in place of `kind.adjustment`.
       adjustment: { favor: 'Descuento', owed: 'Recargo' },
@@ -4571,6 +4619,8 @@ export const es = {
       movedOut: (from: string, to: string | null) => (to ? `Pago movido de ${from} a ${to}` : `Pago de ${from} movido`),
       movedFrom: (from: string) => `movido de ${from}`,
       movedOn: (when: string) => `movido ${when}`,
+      // A month paid before the gym used Rakin (#286), recorded later.
+      paidBefore: (when: string) => `pagado antes de Rakin · anotado ${when}`,
     },
     proof: {
       title: 'Subir comprobante',

@@ -4838,3 +4838,141 @@ describe('Deshacer baja (#285)', () => {
     expect(within(card).queryByRole('button', { name: copy.uncancelPlan })).not.toBeInTheDocument()
   })
 })
+
+describe('Pagado hasta… (#286)', () => {
+  const form = copy.paidThroughForm
+  const refused = copy.paidThroughRefused
+  const QUOTE = {
+    periods: [
+      { period_start: '2026-10-30', period_end: '2026-11-29', amount_clp: 45000, billed: true },
+      { period_start: '2026-11-30', period_end: '2026-12-29', amount_clp: 45000, billed: false },
+    ],
+    total_clp: 90000,
+    paid_through: '2026-12-29',
+  }
+
+  function stubPaidThrough(quote: { status?: number; body: unknown } = { body: QUOTE }, record?: { status?: number; body: unknown }) {
+    return stubApi({
+      extra: (path, method) => {
+        if (path !== '/api/ledger/memberships/m-felipe/paid-through') return undefined
+        return method === 'POST' ? (record ?? { status: 201, body: { paid_through: '2026-12-29' } }) : quote
+      },
+    })
+  }
+
+  async function openPaidThrough() {
+    const card = await money()
+    await userEvent.click(await planAction(card, copy.fix.plan))
+    const choices = within(card).getByRole('group', { name: copy.fix.plan })
+    await userEvent.click(within(choices).getByRole('button', { name: copy.paidThroughPlan }))
+    return screen.getByRole('form', { name: form.title })
+  }
+
+  it('quotes the months up to the date, then records them as paid before Rakin', async () => {
+    const calls = stubPaidThrough()
+    renderAt(PATH)
+    const opened = await openPaidThrough()
+
+    await userEvent.click(within(opened).getByRole('button', { name: form.submitPaid }))
+    expect(within(opened).getByText(form.dayNeeded)).toBeInTheDocument()
+
+    await userEvent.type(within(opened).getByLabelText(form.through), '2026-12-29')
+    expect(await within(opened).findByText(form.period('octubre', '$45.000'))).toBeInTheDocument()
+    expect(within(opened).getByText(form.period('noviembre', '$45.000'))).toBeInTheDocument()
+    expect(within(opened).getByText(form.total('$90.000'))).toBeInTheDocument()
+    expect(within(opened).getByText(form.result('29 dic'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+
+    await userEvent.selectOptions(within(opened).getByLabelText(form.method), 'transfer')
+    await userEvent.click(within(opened).getByRole('button', { name: form.submit('$90.000') }))
+
+    expect(await screen.findByText(form.done('$90.000', '29 dic'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: '/api/ledger/memberships/m-felipe/paid-through',
+        body: { through: '2026-12-29', mode: 'paid', total_clp: 90000, method: 'transfer' },
+      },
+    ])
+  })
+
+  it('records them as a bonificación, with no method', async () => {
+    const calls = stubPaidThrough()
+    renderAt(PATH)
+    const opened = await openPaidThrough()
+
+    await userEvent.type(within(opened).getByLabelText(form.through), '2026-12-29')
+    await userEvent.click(within(opened).getByRole('radio', { name: new RegExp(form.gift) }))
+    expect(within(opened).queryByLabelText(form.method)).not.toBeInTheDocument()
+    await within(opened).findByText(form.total('$90.000'))
+    await userEvent.click(within(opened).getByRole('button', { name: form.submitGift }))
+
+    expect(await screen.findByText(form.doneGift('29 dic'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')[0]?.body).toEqual({ through: '2026-12-29', mode: 'gift', total_clp: 90000 })
+  })
+
+  it('sends a date before the plan started to the Historial', async () => {
+    stubPaidThrough({ status: 409, body: { detail: { code: 'before_plan', message: 'before', started_on: '2024-03-30' } } })
+    renderAt(PATH)
+    const opened = await openPaidThrough()
+
+    await userEvent.type(within(opened).getByLabelText(form.through), '2024-01-31')
+
+    expect(await within(opened).findByText(refused.before_plan('30 mar'))).toBeInTheDocument()
+    expect(within(opened).getByRole('link', { name: form.history })).toHaveAttribute('href', '#member-history')
+    expect(within(opened).getByRole('button', { name: form.submitPaid })).toBeDisabled()
+  })
+
+  it('says when it is paid through the date already', async () => {
+    stubPaidThrough({ status: 409, body: { detail: { code: 'already_paid', message: 'paid', paid_through: '2026-11-29' } } })
+    renderAt(PATH)
+    const opened = await openPaidThrough()
+
+    await userEvent.type(within(opened).getByLabelText(form.through), '2026-11-15')
+
+    expect(await within(opened).findByText(refused.already_paid('29 nov'))).toBeInTheDocument()
+  })
+
+  it.each([
+    ['a pack', { ...MONTHLY, plan_kind: 'credits' as const }],
+    ['a plan dado de baja', { ...MONTHLY, status: 'cancelled' as const }],
+  ])('is not offered on %s', async (_, membership) => {
+    stubApi({ memberships: [membership] })
+    renderAt(PATH)
+    const card = await money()
+    await userEvent.click(await planAction(card, copy.fix.plan))
+    expect(within(card).getByRole('group', { name: copy.fix.plan })).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: copy.paidThroughPlan })).not.toBeInTheDocument()
+  })
+
+  it('names a month paid before Rakin in the Libro', async () => {
+    const paidBefore = entry({
+      id: 'pb',
+      kind: 'payment',
+      method: 'cash',
+      billing_period_id: 'p-sep',
+      period_start: '2026-09-30',
+      note: 'Pagado antes de Rakin',
+      purpose: 'paid_before',
+    })
+    stubApi({ ledger: { ...LEDGER, entries: [paidBefore] } })
+    renderAt(PATH)
+    const ledger = await libro()
+    expect(
+      await within(ledger).findByText(`${copy.ledger.payment('septiembre')} · ${copy.ledger.paidBefore}`),
+    ).toBeInTheDocument()
+  })
+
+  it('names its entries in "Correcciones"', async () => {
+    stubApi({
+      corrections: [
+        correction({ id: 'c1', purpose: null, paid_through: 'paid', reason: 'Pagado antes de Rakin' }),
+        correction({ id: 'c2', purpose: null, paid_through: 'gift', reason: 'Bonificación', period_start: '2026-11-30' }),
+      ],
+    })
+    renderAt(PATH)
+    const fixes = await screen.findByRole('region', { name: copy.corrections.title })
+    expect(await within(fixes).findByText(copy.corrections.paidBefore('octubre'))).toBeInTheDocument()
+    expect(within(fixes).getByText(copy.corrections.gift('noviembre'))).toBeInTheDocument()
+  })
+})

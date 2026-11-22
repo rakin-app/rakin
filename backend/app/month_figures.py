@@ -89,6 +89,8 @@ def stands(entry: str) -> str:
     paying rather than staff's correction (the payment half of a move, `purpose =
     'move'`, is not one), and not undone as recorded by mistake (Anular pago, #281,
     which leaves the payment as it was and adds a `mistake` refund that `corrects` it).
+    A month paid before Rakin ("Pagado hasta", `purpose = 'paid_before'`, #286) is not
+    one either: that money was not received in the month it was recorded.
     Every figure that counts or sums payments reads it, so a correction left out of one
     is left out of all; a new kind that undoes a payment belongs here."""
     return f"""(

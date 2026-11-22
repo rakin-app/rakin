@@ -204,6 +204,7 @@ def correction(row: Any) -> Correction:
         moved=detail.get("moved"),
         other_period_start=row.other_period_start,
         due_date=DateShift.model_validate(detail["due_date"]) if "due_date" in detail else None,
+        paid_through=detail.get("paid_through"),
     )
 
 

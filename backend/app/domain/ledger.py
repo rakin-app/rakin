@@ -44,6 +44,9 @@ class Purpose(StrEnum):
     WRITE_OFF = "write_off"
     MOVE = "move"
     MISTAKE = "mistake"
+    # A month paid before the gym used Rakin ("Pagado hasta", #286): it settles its
+    # period, and is no income of the month it is recorded in (0093).
+    PAID_BEFORE = "paid_before"
 
 
 TRANSITIONS: dict[EntryStatus, frozenset[EntryStatus]] = {
@@ -89,6 +92,8 @@ class LedgerEntry:
             raise ValueError("a revert is an adjustment")
         if self.purpose is Purpose.MOVE and self.kind not in (EntryKind.PAYMENT, EntryKind.REFUND):
             raise ValueError("a move is a refund out of one period and a payment into another")
+        if self.purpose is Purpose.PAID_BEFORE and self.kind is not EntryKind.PAYMENT:
+            raise ValueError("a month paid before Rakin is a payment")
 
 
 def _move(entry: LedgerEntry, to: EntryStatus) -> None:

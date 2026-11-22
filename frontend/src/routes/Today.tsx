@@ -5,7 +5,7 @@ import { activitiesQuery } from '../api/activities'
 import { classTypesQuery } from '../api/classes'
 import { ApiError } from '../api/client'
 import { gymSettingsQuery } from '../api/gym'
-import { recordPayment, trialConversionsQuery, type Method } from '../api/member'
+import { METHODS, recordPayment, trialConversionsQuery, type Method } from '../api/member'
 import { myAccessQuery, myselfQuery, readsLedger } from '../api/me'
 import { memberCountQuery, missingGuardianQuery, plansQuery, type MemberRow } from '../api/people'
 import { proofQueueQuery, type ProofReview } from '../api/review'
@@ -760,7 +760,6 @@ function OverdueList({
   )
 }
 
-const METHODS: readonly Method[] = ['cash', 'transfer', 'other']
 
 /** "Por avisar": a period due today, or a rejected proof to follow up. */
 function RemindRow({ reminder }: { reminder: PaymentReminder }) {
