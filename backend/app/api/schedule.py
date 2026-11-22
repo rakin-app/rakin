@@ -273,6 +273,11 @@ async def update_slot(
             ),
             {"id": slot_id, "target": target, "start": start},
         )
+        # Its study material (#537) shows on the new slot's classes too, and still on
+        # the old one's before the change.
+        await session.execute(
+            text("SELECT study_material_follow(:id, :target)"), {"id": slot_id, "target": target}
+        )
     if retag or not in_place:
         await set_tags(session, "schedule_slot_tag", "slot_id", target, new_tags)
 
@@ -352,8 +357,11 @@ async def _retag(
 
 @router.delete("/{slot_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_slot(slot_id: uuid.UUID, session: AdminSession) -> None:
-    """Delete the slot and its classes yet to happen; the rest stay as one-off classes."""
+    """Delete the slot and its classes yet to happen; the rest stay as one-off classes.
+    Study material on it alone is removed."""
     await _get(session, slot_id, lock=True)
+    # Its study material (#537) on no other slot is removed, with its row in the log.
+    await session.execute(text("SELECT study_material_slot_gone(:id)"), {"id": slot_id})
     await _delete_sessions(session, UNTOUCHED, {"slot": slot_id})
     await session.execute(
         text("UPDATE session SET slot_id = NULL, slot_date = NULL WHERE slot_id = :id"),

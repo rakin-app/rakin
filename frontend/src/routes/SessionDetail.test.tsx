@@ -155,6 +155,8 @@ function stubApi({ members = [ANTONIA, FELIPE, PAULA, IGNACIO], plans = [TRIAL_P
       ]
       return { status: 201, body: answer() }
     }
+    // Its study material (#537): none.
+    if (path === '/api/sessions/s1/material') return { body: [] }
     return { status: 404, body: { detail: 'Not Found' } }
   }
 

@@ -25,6 +25,7 @@ import { t } from '../i18n/es'
 import { EditRow, Field, LoadFailed, SectionHead } from './settingsForm'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
+import { StudyMaterial } from '../components/StudyMaterial'
 
 const copy = t.admin.settings.schedule
 const form = copy.form
@@ -56,8 +57,9 @@ function refresh(queryClient: ReturnType<typeof useQueryClient>) {
  * topic, from a date and, if set, until one; Rakin makes its classes for the next two
  * weeks, so Clases shows them before they start. Editing one changes it from a date on
  * ("a partir de"); the classes before that date, and those already held or with
- * attendance, stay as they were. Below, the days the gym is closed ("Cerrado"), which
- * have no classes.
+ * attendance, stay as they were. A class being edited shows its study material too
+ * (#537), shared on each of its classes from a date on. Below, the days the gym is
+ * closed ("Cerrado"), which have no classes.
  */
 export function ScheduleSettings() {
   const slots = useQuery(scheduleQuery)
@@ -106,8 +108,10 @@ export function ScheduleSettings() {
           <Card as="ul" flush className="settings__card settings__card--rows settings__menu">
             {current.map((slot) =>
               editing === slot.id ? (
-                <li key={slot.id}>
+                <li key={slot.id} className="schedule__editing">
                   <SlotForm slot={slot} today={today} onCancel={() => setEditing(null)} onDone={done} />
+                  {/* Its study material (#537): on each of its classes from a date on. */}
+                  <StudyMaterial host={{ kind: 'slot', id: slot.id }} canShare today={today} />
                 </li>
               ) : (
                 <SlotRow key={slot.id} slot={slot} today={today} onEdit={() => open(slot.id)} />

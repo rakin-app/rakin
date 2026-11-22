@@ -2956,6 +2956,83 @@ export const es = {
         },
       },
     },
+    // "Material de estudio" (#537): notes and links on a class, for an audience chosen
+    // when it is shared. On the class and in Horario.
+    material: {
+      title: 'Material de estudio',
+      get intro() {
+        return `Notas y enlaces para estudiar. Tus ${w.members} no ven nada hasta que eliges con quién compartirlo.`
+      },
+      empty: 'Todavía no hay material en esta clase.',
+      emptySlot: 'Todavía no hay material en esta clase del horario.',
+      loading: 'Cargando el material…',
+      error: 'No pudimos cargar el material.',
+      retry: 'Reintentar',
+      add: 'Agregar material',
+      edit: 'Editar',
+      remove: 'Quitar',
+      cancel: 'Cancelar',
+      audience: {
+        attendees: 'Quienes asistieron',
+        program: 'El programa',
+        plans: 'Planes',
+      },
+      // What each audience means, under its choice.
+      audienceHint: {
+        attendees: 'Quienes quedaron presentes en la clase.',
+        get program() {
+          return `Todos los ${w.members} con un plan del programa de la clase.`
+        },
+        get plans() {
+          return `Los ${w.members} con un plan activo de los que elijas.`
+        },
+      },
+      // On a row: who sees it.
+      shownTo: (audience: string) => `Para: ${audience}`,
+      sharedBy: (name: string) => `Compartido por ${name}`,
+      recurring: (day: string) => `En todas las clases desde el ${day}`,
+      form: {
+        newTitle: 'Nuevo material',
+        editTitle: 'Editar material',
+        title: 'Título',
+        titlePlaceholder: 'Ej.: Pasaje de guardia',
+        titleMissing: 'Escribe un título.',
+        body: 'Texto',
+        bodyHint: 'Opcional. Texto simple; los saltos de línea se mantienen.',
+        links: 'Enlaces',
+        linksHint: 'Opcional. Uno por línea, cada uno con https://: YouTube, Instagram, Drive o cualquier sitio.',
+        badLinks: (n: number) =>
+          n === 1
+            ? 'Un enlace no empieza con https:// o tiene espacios.'
+            : `${n} enlaces no empiezan con https:// o tienen espacios.`,
+        linksPlaceholder: 'https://',
+        tooManyLinks: (max: number) => `Hasta ${max} enlaces.`,
+        audience: '¿Quién lo ve?',
+        audienceMissing: 'Elige quién lo ve.',
+        plans: 'Planes',
+        noPlans: 'Elige al menos un plan.',
+        where: '¿En qué clases?',
+        thisClass: 'Solo esta clase',
+        everyClass: 'Esta y las siguientes de este horario',
+        from: 'Desde',
+        submit: 'Compartir',
+        save: 'Guardar',
+        working: 'Guardando…',
+        failed: 'No pudimos guardarlo. Revisa los datos e inténtalo de nuevo.',
+      },
+      removeConfirm: {
+        question: (title: string) => `¿Quitar «${title}»?`,
+        get note() {
+          return `Tus ${w.members} dejan de verlo de inmediato. Queda registrado quién lo quitó.`
+        },
+        confirm: 'Quitar material',
+        working: 'Quitando…',
+        failed: 'No pudimos quitarlo.',
+      },
+      shared: 'Material compartido.',
+      saved: 'Material guardado.',
+      removed: 'Material quitado.',
+    },
     session: {
       back: 'Volver a Clases',
       loading: 'Cargando clase…',
@@ -4230,6 +4307,22 @@ export const es = {
       memberSince: (month: string) => `${w.Member} desde ${month}`,
     },
     // What each class attended was about (#243); never the coach's notes.
+    // "Material de estudio" (#537): what the gym's coaches shared with them.
+    material: {
+      title: 'Material de estudio',
+      empty: 'Todavía no hay material compartido contigo.',
+      loading: 'Cargando el material…',
+      error: 'No pudimos cargar el material.',
+      // The class and its day; a recurring one's, the day it shows from.
+      when: (classType: string, day: string) => `${classType} · ${day}`,
+      since: (classType: string, day: string) => `${classType} · desde el ${day}`,
+      sharedBy: (name: string) => `Compartido por ${name}`,
+      // A guardian's row reached through their dependents alone: "Para León", "Para León y Ema".
+      forWhom: (names: string[]) =>
+        `Para ${names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}` : names[0]}`,
+      links: 'Enlaces',
+      more: (n: number) => `Ver ${n} más`,
+    },
     classes: {
       title: 'Mis clases',
       // A dependent's, on a guardian's page.

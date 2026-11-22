@@ -1,0 +1,129 @@
+/* "Material de estudio" (#537): a class's notes and links, on the class, in Horario and
+   on the student page. */
+.material__note,
+.material__detail {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.material__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.material__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.material__title {
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+/* Plain text, its line breaks kept. */
+.material__body {
+  margin: var(--space-1) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.material__links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  margin-top: var(--space-1);
+}
+
+/* A plain link: its host first, the address under it, never wider than the card. */
+.material__link {
+  display: flex;
+  flex-direction: column;
+  min-height: var(--control-height);
+  justify-content: center;
+  min-width: 0;
+  color: var(--color-accent);
+}
+
+.material__host {
+  font-weight: var(--font-weight-semibold);
+}
+
+.material__url {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.material__add {
+  align-self: flex-start;
+}
+
+.material__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.material__fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.material__choice {
+  display: flex;
+  flex-direction: column;
+}
+
+/* On the student page: a row is a button that opens the text and links under it,
+   stacked, over the payment list's row it borrows its look from. */
+.history__row.my-material__row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.my-material__toggle {
+  display: flex;
+  min-height: var(--control-height);
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.my-material__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.my-material__content[hidden] {
+  display: none;
+}

@@ -50,6 +50,7 @@ from app.api import (
     session_blocks,
     sessions,
     staff,
+    study_material,
     summary,
     terms,
     titles,
@@ -151,6 +152,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(check_in.router)
     app.include_router(block_kinds.router)
     app.include_router(session_blocks.router)
+    app.include_router(study_material.router)
+    app.include_router(study_material.mine)
     app.include_router(memberships.router)
     app.include_router(freeze_requests.mine)
     app.include_router(freeze_requests.router)

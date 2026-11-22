@@ -198,6 +198,8 @@ function stubApi({
     if (path === '/api/class-types') return { body: [FUNDAMENTALS, OPEN_MAT] }
     if (path === '/api/staff') return { body: STAFF }
     if (path === '/api/plans') return { body: [] }
+    // Its study material (#537): none.
+    if (path === '/api/sessions/s1/material') return { body: [] }
     return { status: 404, body: { detail: 'Not Found' } }
   }
 

@@ -124,6 +124,8 @@ def ids(loaded: Loaded) -> dict[str, str]:
         "acceptance_id": unknown,
         # An expense's receipt (#314), which a coach is refused.
         "expense_id": unknown,
+        # A recurring class's study material (#537).
+        "slot_id": str(seed.schedule_slots[0]["id"]),
         # A discount quoted (#25).
         "pct": "10",
         # Clases's week or month (#426).
