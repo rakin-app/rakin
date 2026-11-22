@@ -144,7 +144,10 @@ ALREADY_CLAIMED = HTTPException(status.HTTP_409_CONFLICT, "this proof is already
 # once (0068): each takes the key's lock, held to the end of its transaction, and only
 # then asks whether the key backs a payment. Two statements, never one: under READ
 # COMMITTED a statement reads the snapshot it started with, so an EXISTS beside the lock
-# would read from before the wait, and miss the claim that held it.
+# would read from before the wait, and miss the claim that held it. The nightly reaper
+# of unclaimed uploads takes the same lock before it deletes one (`app.jobs.uploads`),
+# so the file is looked for only once it is held: a claim either lands first, and the
+# reaper keeps the file, or finds it gone.
 LOCK_PROOF = text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
 CLAIMED = text("SELECT EXISTS (SELECT FROM ledger_entry WHERE proof_object_key = :key)")
 
@@ -156,6 +159,7 @@ async def _usable_proof(
     already claimed: one upload backs one claim, of one period or of several (#66)."""
     if not is_own_proof(tenant, key):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "not one of your uploads")
+    await session.execute(LOCK_PROOF, {"key": key})
     stored = await integrations.blob_store.stat(key)
     # The store already refused anything else at upload; checked again, since an
     # upload URL is only as strict as the store that signed it.
@@ -165,7 +169,6 @@ async def _usable_proof(
         or stored.size > MAX_UPLOAD_BYTES
     ):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "proof not uploaded")
-    await session.execute(LOCK_PROOF, {"key": key})
     if await session.scalar(CLAIMED, {"key": key}):
         raise ALREADY_CLAIMED
 

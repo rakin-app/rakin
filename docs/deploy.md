@@ -405,6 +405,14 @@ docker compose exec postgres psql -U rakin rakin
 docker compose run --rm api python -m app.jobs.daily --today 2026-11-09   # re-run a day's jobs
 ```
 
+**Uploads nobody claimed** (#522). A proof or receipt is PUT to the bucket before the form that claims it is sent, so an abandoned form leaves a file nothing points at. The nightly `uploads` job, the last of `app.jobs.daily`, deletes each file under `proofs/<gym_id>/` and `receipts/<gym_id>/` written more than 48 hours before the run that no ledger entry's `proof_object_key`, no expense's `receipt_object_key` and no `expense_changed` row's before or after names: a receipt replaced or taken off stays, as the correction's history. A forgotten person's proofs go with their entries on the next run. It logs `unclaimed uploads reaped` per gym with `deleted`, `kept` and `failed` counts, never a key; a deletion the bucket refuses fails the day, which the next run retries. A suspended gym's files wait for it to resume. To see it work on staging, upload a proof as a student without sending the payment, then run it now with a short grace (outside `job_run`, so the night's run still happens):
+
+```sh
+docker compose run --rm api python -m app.jobs.uploads --grace-hours 0.01
+```
+
+Its log line for the gym says `deleted: 1`, and the file is gone from the bucket (the R2 dashboard, under `proofs/<gym id>/<person id>/`). Mind the grace on production: a file younger than it may still be claimed by a form left open.
+
 **Resumen del mes by email** (#507) goes to each gym's titular on the first 7 days of the month. To check it in a real inbox at any other time, send one gym's closed month now:
 
 ```sh

@@ -526,7 +526,12 @@ def test_only_a_persons_request_inserts_an_expense() -> None:
         if writes.search(path.read_text(encoding="utf-8"))
     )
     assert found == ["api/expense_recurring.py", "api/expenses.py", "seed/build.py"]
-    assert not any("expense" in p.read_text(encoding="utf-8") for p in (APP / "jobs").rglob("*.py"))
+    # Nor does any job read one, but `uploads`, which reads receipt keys to keep (#522).
+    assert not any(
+        "expense" in p.read_text(encoding="utf-8")
+        for p in (APP / "jobs").rglob("*.py")
+        if p.name != "uploads.py"
+    )
     migrations = Path(__file__).parents[1] / "alembic" / "versions"
     triggers = [
         p.name
