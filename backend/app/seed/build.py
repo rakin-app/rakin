@@ -7,7 +7,7 @@ and loading them again inserts nothing new.
 import hashlib
 import random
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
@@ -49,6 +49,7 @@ from app.seed.data import (
     PROGRAMS,
     RANKS,
     REQUIREMENTS,
+    SIGN_IN_PEOPLE,
     SLOT_TAGS,
     SLOTS,
     STAFF,
@@ -909,8 +910,18 @@ def _expenses(as_of: date) -> list[Row]:
     return rows
 
 
-def build(as_of: date) -> Seed:
-    """The demo gym as it stands on `as_of`, a gym-local date."""
+def sign_in_addresses(addresses: Sequence[str]) -> dict[str, str]:
+    """The seed person each address becomes, by key, in `SIGN_IN_PEOPLE`'s order:
+    lower-cased, blanks and repeats dropped, any beyond the last person ignored."""
+    unique = list(dict.fromkeys(a.strip().lower() for a in addresses if a.strip()))
+    return {key: address for (key, _), address in zip(SIGN_IN_PEOPLE, unique, strict=False)}
+
+
+def build(as_of: date, sign_in: Sequence[str] = ()) -> Seed:
+    """The demo gym as it stands on `as_of`, a gym-local date.
+
+    `sign_in` are addresses that take the place of seed people's own (`sign_in_addresses`),
+    so a host whose mail reaches only real addresses (staging) can sign in as them."""
     builder = _Builder(as_of)
     for spec in MEMBERS:
         builder.member(spec)
@@ -918,7 +929,10 @@ def build(as_of: date) -> Seed:
     opened = add_months(as_of, -60)
     extra_charges, extra_lines, extra_payments = _extra_charges(as_of)
     staff_people = [_person(s.key, s.name, joined=opened, kid=False) for s in STAFF]
-    people = [*staff_people, *builder.people]
+    emails = {seed_id("person", k): a for k, a in sign_in_addresses(sign_in).items()}
+    people = [
+        {**p, "email": emails.get(p["id"], p["email"])} for p in (*staff_people, *builder.people)
+    ]
     return Seed(
         as_of=as_of,
         gym={

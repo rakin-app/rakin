@@ -2,6 +2,7 @@
 
     uv run python -m app.seed                      # as of today, gym-local
     uv run python -m app.seed --today 2026-11-08   # the date the UI design depicts
+    uv run python -m app.seed --sign-in a@example.com,b@example.com  # staging: who signs in (#503)
 
 `app.seed.data` is who trains there, `app.seed.build` turns that into rows for a seed
 date, and `load` writes them. Every row has a fixed id, so loading again inserts
@@ -12,6 +13,7 @@ placeholder image at every seeded transfer's proof key, so Validar comprobante o
 """
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -52,8 +54,11 @@ class Loaded:
     ignored_today: date | None = None
 
 
-async def load(conn: asyncpg.Connection, today: date | None = None) -> Loaded:
-    """Write the demo gym in one transaction; rows already there are left as they are."""
+async def load(
+    conn: asyncpg.Connection, today: date | None = None, sign_in: Sequence[str] = ()
+) -> Loaded:
+    """Write the demo gym in one transaction; rows already there are left as they are,
+    so `sign_in` (`build`'s) reaches only a fresh load's people."""
     await conn.set_type_codec("jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog")
     async with conn.transaction():
         # RLS is forced, so the owner writes only in the gym `app.gym_id` names.
@@ -62,7 +67,7 @@ async def load(conn: asyncpg.Connection, today: date | None = None) -> Loaded:
             "SELECT settings -> 'seed' ->> 'as_of' FROM gym WHERE id = $1", GYM_ID
         )
         as_of = date.fromisoformat(stored) if stored else today or gym_today(TIMEZONE)
-        seed = build(as_of)
+        seed = build(as_of, sign_in)
         inserted: dict[str, int] = {}
         for table, rows in seed.tables():
             columns = list(rows[0])
