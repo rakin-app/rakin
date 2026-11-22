@@ -71,6 +71,8 @@ KINDS = {
     "refund": "Devolución",
 }
 VOID = "Anulación"
+# A payment undone as recorded by mistake (#281): not money given back.
+PAYMENT_VOID = "Pago anulado"
 STATUSES = {"validated": "Validado", "pending": "Por validar", "rejected": "Rechazado"}
 METHODS = {"cash": "Efectivo", "transfer": "Transferencia", "other": "Otro"}
 # app.domain.extra_charges.Category, as the cobros screen names them.
@@ -157,6 +159,8 @@ class Totals:
     refunded_clp: int
     # What the month's charges still owe today.
     outstanding_clp: int
+    # Payments undone as recorded by mistake (#281), apart from the refunds.
+    corrected_clp: int = 0
 
 
 @dataclass(frozen=True)
@@ -199,7 +203,9 @@ class MonthExpenses:
     income_clp: int | None = None
 
 
-def kind_label(kind: str, voids: bool) -> str:
+def kind_label(kind: str, voids: bool, purpose: str | None = None) -> str:
+    if purpose == "mistake":
+        return PAYMENT_VOID
     return VOID if voids else KINDS[kind]
 
 
@@ -228,6 +234,7 @@ def totals(entries: Iterable[Row], outstanding_clp: int) -> Totals:
         voided_clp=sums.get(VOID, 0),
         refunded_clp=sums.get(KINDS["refund"], 0),
         outstanding_clp=outstanding_clp,
+        corrected_clp=sums.get(PAYMENT_VOID, 0),
     )
 
 
@@ -239,7 +246,11 @@ def total_lines(t: Totals) -> list[tuple[str, int]]:
         ("Total ajustado (a favor +, en contra -)", t.adjusted_clp),
         ("Total anulado", t.voided_clp),
         ("Total devuelto", t.refunded_clp),
-        ("Cobrado neto (pagado menos devuelto)", t.paid_clp - t.refunded_clp),
+        ("Total pagos anulados (error de registro)", t.corrected_clp),
+        (
+            "Cobrado neto (pagado menos devuelto y anulado)",
+            t.paid_clp - t.refunded_clp - t.corrected_clp,
+        ),
         ("Saldo pendiente de los cargos del mes", t.outstanding_clp),
     ]
 

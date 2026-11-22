@@ -1187,9 +1187,10 @@ describe('Ficha de alumno', () => {
     renderAt(PATH)
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
 
-    // Its one fix is the title, not a one-chip choice (#419).
-    expect(within(fixes).getByText(copy.fix.only(copy.fix.payment('septiembre'), copy.fix.refund))).toBeInTheDocument()
-    expect(within(fixes).queryByRole('button', { name: copy.fix.refund })).toBeNull()
+    // "Anular pago" first (#281), then the refund.
+    const chips = within(fixes).getAllByRole('button').filter((b) => b.hasAttribute('aria-pressed'))
+    expect(chips.map((b) => b.textContent)).toEqual([copy.fix.voidPayment, copy.fix.refund])
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.refund }))
     const form = within(fixes).getByRole('form', { name: copy.refundForm.title })
     const amount = within(form).getByLabelText(copy.refundForm.amount)
     await userEvent.clear(amount)
@@ -1212,12 +1213,100 @@ describe('Ficha de alumno', () => {
     stubApi()
     renderAt(PATH)
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.refund }))
 
     const amount = within(fixes).getByLabelText(copy.refundForm.amount)
     await userEvent.clear(amount)
     await userEvent.type(amount, '60000')
     expect(within(fixes).getByText(copy.fix.owed('septiembre', '$0', '$45.000'))).toBeInTheDocument()
     expect(within(fixes).getByText(copy.fix.balance('$45.000', '$90.000'))).toBeInTheDocument()
+  })
+
+  it('undoes a payment recorded by mistake, saying first whom the notice goes to (#281)', async () => {
+    const calls = stubApi({
+      extra: (path, method) => {
+        if (path === '/api/people/felipe/welcome') return { body: { to: 'marta@example.com', guardian: 'Marta Díaz', last: null } }
+        if (path === '/api/ledger/payment-voids' && method === 'POST') {
+          return { status: 201, body: { period: { outstanding_clp: 45000, closed: false } } }
+        }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+    const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    const form = within(fixes).getByRole('form', { name: copy.voidPaymentForm.title })
+
+    // A reason first; what it does, as for any fix.
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidPaymentForm.submit('$45.000') }))
+    expect(within(form).getByRole('alert')).toHaveTextContent(copy.voidPaymentForm.reasonNeeded)
+    expect(within(form).getByText(copy.fix.owed('septiembre', '$0', '$45.000'))).toBeInTheDocument()
+    expect(within(form).getByText(copy.fix.balance('$45.000', '$90.000'))).toBeInTheDocument()
+    await userEvent.type(within(form).getByLabelText(copy.voidPaymentForm.reason), ' era de otro alumno ')
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidPaymentForm.submit('$45.000') }))
+
+    // The second step names who is told, and sends nothing yet.
+    expect(within(form).getByText(copy.voidPaymentForm.notice('Marta Díaz'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidPaymentForm.confirm('$45.000') }))
+
+    expect(await within(await libro()).findByText(copy.voidPaymentForm.done('septiembre', '$45.000'))).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: '/api/ledger/payment-voids', body: { payment_id: 'pay-sep', reason: 'era de otro alumno' } },
+    ])
+  })
+
+  it('says when no notice goes out, and goes back a step to change the reason (#281)', async () => {
+    stubApi({
+      extra: (path) =>
+        path === '/api/people/felipe/welcome' ? { body: { to: null, guardian: null, last: null } } : undefined,
+    })
+    renderAt(PATH)
+    const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    const form = within(fixes).getByRole('form', { name: copy.voidPaymentForm.title })
+    await userEvent.type(within(form).getByLabelText(copy.voidPaymentForm.reason), 'nunca llegó')
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidPaymentForm.submit('$45.000') }))
+
+    expect(await within(form).findByText(copy.voidPaymentForm.noEmail('Felipe Díaz'))).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidPaymentForm.back }))
+    expect(within(form).queryByText(copy.voidPaymentForm.noEmail('Felipe Díaz'))).not.toBeInTheDocument()
+    expect(within(form).getByRole('button', { name: copy.voidPaymentForm.submit('$45.000') })).toBeInTheDocument()
+  })
+
+  it('reads a payment undone as a correction, with its reason, and why one was refused (#281)', async () => {
+    stubApi({
+      ledger: {
+        ...LEDGER,
+        entries: [
+          {
+            ...LEDGER.entries[1]!,
+            id: 'undo',
+            kind: 'refund',
+            method: null,
+            note: 'era de otro alumno',
+            refund_of: 'pay-sep',
+            purpose: 'mistake',
+          },
+          ...LEDGER.entries,
+        ],
+      },
+      extra: (path, method) =>
+        path === '/api/ledger/payment-voids' && method === 'POST'
+          ? { status: 409, body: { detail: { code: 'nothing_left', message: 'nothing is left' } } }
+          : undefined,
+    })
+    renderAt(PATH)
+    const ledger = await libro()
+    const [first] = within(ledger).getAllByRole('listitem')
+    expect(first).toHaveTextContent(copy.ledger.paymentVoid('septiembre'))
+    expect(first).toHaveTextContent(`${copy.ledger.mistake} · era de otro alumno`)
+    expect(first).toHaveTextContent('−$45.000')
+
+    const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    const form = within(fixes).getByRole('form', { name: copy.voidPaymentForm.title })
+    await userEvent.type(within(form).getByLabelText(copy.voidPaymentForm.reason), 'x')
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidPaymentForm.submit('$45.000') }))
+    await userEvent.click(within(form).getByRole('button', { name: copy.voidPaymentForm.confirm('$45.000') }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent(copy.voidPaymentRefused.nothing_left)
   })
 
   it('says so when the payment has less left to give back', async () => {

@@ -1407,6 +1407,8 @@ export const es = {
         voidCharge: 'Anular cargo',
         // A charge voided by mistake, owed again (#278).
         restoreCharge: 'Restaurar cargo',
+        // A payment recorded by mistake, undone (#281).
+        voidPayment: 'Anular pago',
         refund: 'Reembolsar',
         plan: 'Corregir plan',
         extraCharge: 'Cobro extra',
@@ -1442,6 +1444,31 @@ export const es = {
         cancel: 'Cancelar',
         working: 'Restaurando…',
         done: (month: string, amount: string) => `Cargo de ${month} restaurado: vuelve a deberse ${amount}.`,
+      },
+      // "Anular pago" (#281): a payment recorded by mistake, undone; then the right one is recorded.
+      voidPaymentForm: {
+        title: 'Anular pago',
+        intro:
+          'Para un pago registrado por error (monto equivocado, la persona equivocada, plata que nunca llegó): se anula completo y el período vuelve a deberse. No es una devolución. Si correspondía otro monto, registra después el pago correcto.',
+        reason: 'Motivo',
+        reasonHint: 'Solo lo ve el equipo. A quien paga se le avisa que fue un error de registro.',
+        reasonNeeded: 'Escribe qué se registró mal.',
+        submit: (amount: string) => `Anular pago de ${amount}`,
+        // The second step: what else happens (docs/design/billing-corrections.md, section 4).
+        notice: (name: string) => `Se enviará a ${name} un aviso de que el pago se anuló.`,
+        noEmail: (name: string) => `${name} no tiene email: no se le enviará aviso.`,
+        confirm: (amount: string) => `Sí, anular ${amount}`,
+        back: 'Volver',
+        cancel: 'Cancelar',
+        working: 'Anulando…',
+        done: (month: string, amount: string) => `Pago de ${month} anulado: ${amount} vuelve a deberse.`,
+      },
+      // Why "Anular pago" was refused (#281).
+      voidPaymentRefused: {
+        not_validated: 'Ese pago no está validado: un comprobante se revisa, no se anula.',
+        nothing_left: 'A ese pago ya no le queda nada: se devolvió o anuló completo.',
+        a_correction: 'Ese pago es una corrección: se deshace con su inversa.',
+        failed: 'No pudimos anularlo. Inténtalo de nuevo.',
       },
       // Why a restore was refused (#278).
       restoreRefused: {
@@ -1736,6 +1763,10 @@ export const es = {
         restored: (reason: string, by: string | null, day: string) =>
           `Restaurado: ${reason}${by ? `, por ${by}` : ''}, ${day}`,
         restore: (month: string) => `Restauración ${month}`,
+        // A payment undone as recorded by mistake (#281), and the credit it carried, taken back.
+        paymentVoid: (month: string) => `Pago anulado ${month}`,
+        mistake: 'error de registro',
+        creditReverted: 'Saldo a favor anulado',
         all: (n: number) => `Ver todo el libro (${n})`,
         fewer: 'Ver menos',
       },
@@ -1746,6 +1777,7 @@ export const es = {
         void: (month: string) => `Anuló cargo ${month}`,
         planVoid: (month: string) => `Anuló plan · cargo ${month}`,
         restore: (month: string) => `Restauró cargo ${month}`,
+        paymentVoid: (month: string) => (month ? `Anuló pago ${month}` : 'Anuló un pago'),
         // An adjustment by which way it went, as the Libro names it.
         adjustment: (favor: boolean, month: string) => `${favor ? 'Descuento' : 'Recargo'} ${month}`,
         dueDate: 'Cambió el vencimiento',
@@ -3262,6 +3294,8 @@ export const es = {
         collected: 'Cobrado',
         collectedDetail: (n: number, refunded: string | null) =>
           (n === 1 ? '1 pago validado' : `${n} pagos validados`) + (refunded ? ` · Devuelto ${refunded}` : ''),
+        // Payments undone as recorded by mistake (#281), beside the refunds: no money left.
+        corrected: (amount: string) => ` · Pagos anulados ${amount}`,
         pending: 'Por validar',
         pendingDetail: (n: number) => (n === 1 ? '1 comprobante' : `${n} comprobantes`),
         overdue: 'Vencido',
@@ -3288,6 +3322,10 @@ export const es = {
       // An adjustment voiding a charge (#256), and one restoring it (#278).
       void: 'Anulación',
       restore: 'Restauración',
+      // A payment undone as recorded by mistake (#281), and the credit it carried, taken back.
+      paymentVoid: 'Pago anulado',
+      creditReverted: 'Saldo a favor anulado',
+      mistake: 'Error de registro',
       kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución', freeze: 'Congelación' },
       // An adjustment on a period by which way it goes (#210), in place of `kind.adjustment`.
       adjustment: { favor: 'Descuento', owed: 'Recargo' },
@@ -4226,6 +4264,10 @@ export const es = {
       surcharge: 'Recargo',
       surcharged: (when: string) => `se suma a lo que debes · ${when}`,
       credit: 'Saldo a favor',
+      // A payment undone as recorded by mistake (#281): never the gym's reason.
+      paymentVoid: 'Pago anulado: error de registro',
+      voided: (when: string) => `anulado ${when}`,
+      creditReverted: 'Saldo a favor anulado',
     },
     proof: {
       title: 'Subir comprobante',

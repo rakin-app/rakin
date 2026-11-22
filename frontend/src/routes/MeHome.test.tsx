@@ -546,6 +546,25 @@ describe('Mi página', () => {
     ])
   })
 
+  it('lists a payment undone as a mistake, and its credit, never with the reason (#281)', async () => {
+    const at = { claimed_at: null, validated_at: `${YEAR}-11-04T15:00:00Z`, created_at: `${YEAR}-11-04T15:00:00Z` }
+    stubPage(
+      diego({
+        payments: [
+          payment({ id: 'u-1', kind: 'refund', amount_clp: 50000, period_start: `${YEAR}-11-10`, purpose: 'mistake', ...at }),
+          payment({ id: 'v-1', kind: 'adjustment', amount_clp: -5000, period_start: null, purpose: 'revert', ...at }),
+        ],
+      }),
+    )
+    renderMe()
+
+    const history = within(await screen.findByRole('region', { name: copy.history.title }))
+    expect(history.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      `${copy.history.paymentVoid}anulado 4 nov−$50.000`,
+      `${copy.history.creditReverted}anulado 4 nov−$5.000`,
+    ])
+  })
+
   it("shows a rejection's note, and whose payment it was", async () => {
     stubPage(
       diego({

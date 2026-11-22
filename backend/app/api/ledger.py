@@ -23,6 +23,11 @@ validated credit adjustment with no period, for a later one to use.
 Either way the student, or their guardian, is emailed a receipt (`receipt_for`): the
 period the payment covers, what is left of it, and the membership's running balance.
 
+A payment recorded by mistake (a wrong amount, the wrong member, money that never
+arrived) is undone with `POST /api/ledger/payment-voids` (#281): a refund of what is
+left of it, `purpose = 'mistake'`, which the reports count as "Pagos anulados" rather
+than as money given back, and an email to the student that it was undone.
+
 Owner and admin only (`LedgerSession`); RLS holds a coach to it as well (migration 0006).
 """
 
@@ -35,9 +40,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.corrections import balance, record_correction
+from app.api.corrections import balance, record_correction, record_line_correction
 from app.api.entries import insert_entry, standing_void
-from app.api.extra_lines import line_title_sql, refund_line_payment
+from app.api.extra_charges import line_facts
+from app.api.extra_lines import line_after, line_title_sql, locked_line_by_id, refund_line_payment
 from app.api.people import people_matching
 from app.contacts import Contact, contact_for
 from app.db import driver_connection
@@ -46,7 +52,7 @@ from app.domain.billing import SETTLING_KINDS, Billing, BillingPeriod, Settlemen
 from app.domain.errors import InvalidTransition
 from app.domain.ledger import EntryKind, EntryStatus, LedgerEntry, Purpose
 from app.jobs.billing import billable_membership, write_billing
-from app.notices import RECEIPT, Notice, Notices, get_notices
+from app.notices import PAYMENT_VOIDED, RECEIPT, Notice, Notices, get_notices
 from app.permissions import LedgerReadSession, LedgerSession
 from app.schemas.ledger import (
     AdjustmentRecord,
@@ -69,11 +75,15 @@ from app.schemas.ledger import (
     OverduePeriod,
     PaymentAheadRecord,
     PaymentRecord,
+    PaymentVoidConflict,
+    PaymentVoidRecord,
+    PaymentVoidRefusal,
     Period,
     PersonRef,
     RecordedAdjustment,
     RecordedAhead,
     RecordedPayment,
+    RecordedPaymentVoid,
     RecordedRefund,
     RecordedRestore,
     RecordedVoid,
@@ -583,6 +593,193 @@ async def record_refund(body: RefundRecord, session: LedgerSession) -> RecordedR
     )
 
 
+# A payment to undo, and its gym-local day, which the student's notice names.
+PAYMENT_TO_UNDO = text(
+    "SELECT p.membership_id, p.billing_period_id, p.extra_line_id, p.amount_clp, p.status,"
+    " p.purpose, (p.validated_at AT TIME ZONE g.timezone)::date AS paid_on"
+    " FROM ledger_entry p JOIN gym g ON g.id = p.gym_id WHERE p.id = :id AND p.kind = :payment"
+)
+
+# The credit the payment carried (`settled`, and a proof's validation alike): the
+# period-less adjustment written beside it, in the transaction that validated it, so at
+# its `validated_at`, by whoever validated it; not reverted already.
+CARRIED_CREDIT = text(
+    "SELECT c.id, c.amount_clp FROM ledger_entry p JOIN ledger_entry c"
+    " ON c.membership_id = p.membership_id AND c.created_at = p.validated_at"
+    " AND c.validated_by = p.validated_by"
+    " WHERE p.id = :id AND c.kind = 'adjustment' AND c.status = 'validated'"
+    " AND c.billing_period_id IS NULL AND c.extra_line_id IS NULL AND c.purpose IS NULL"
+    " AND c.amount_clp > 0 AND NOT EXISTS ("
+    "SELECT FROM ledger_entry r WHERE r.corrects = c.id AND r.purpose = 'revert')"
+    " ORDER BY c.id LIMIT 1"
+)
+
+
+def payment_void_refused(code: PaymentVoidRefusal, message: str) -> HTTPException:
+    return HTTPException(
+        status.HTTP_409_CONFLICT, PaymentVoidConflict(code=code, message=message).model_dump()
+    )
+
+
+@router.post(
+    "/payment-voids",
+    status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_409_CONFLICT: {"model": PaymentVoidConflict}},
+)
+async def record_payment_void(
+    body: PaymentVoidRecord,
+    session: LedgerSession,
+    notices: Annotated[Notices, Depends(get_notices)],
+    background: BackgroundTasks,
+) -> RecordedPaymentVoid:
+    """Anular un pago registrado por error (#281): all that is left of the payment, after
+    its refunds, is undone with a refund of it (`billing.undo_payment`), under the
+    period's locks, or its cobro line's. The period owes it again, as after a refund; the
+    reports count it as a correction, never as money given back. A payment that carried
+    credit is undone as a whole, its credit reverted in the same transaction. The student,
+    or their guardian, is emailed that it was undone, once it has committed. To record the
+    right amount, the admin then records a payment as usual."""
+    found = (
+        await session.execute(
+            PAYMENT_TO_UNDO, {"id": body.payment_id, "payment": EntryKind.PAYMENT.value}
+        )
+    ).one_or_none()
+    if found is None:
+        raise NO_PAYMENT
+    if found.status != EntryStatus.VALIDATED:
+        raise payment_void_refused(
+            PaymentVoidRefusal.NOT_VALIDATED, "only a validated payment is undone"
+        )
+    if found.purpose is not None:
+        raise payment_void_refused(
+            PaymentVoidRefusal.A_CORRECTION, "the payment is a correction: undo it by its inverse"
+        )
+    if found.extra_line_id is not None:
+        _, _, period = await locked_line_by_id(session, found.extra_line_id)
+    else:
+        _, period = await locked_period(session, found.billing_period_id, found.membership_id)
+    # Read under the locks every refund of it takes, so none lands in between.
+    given_back = await session.scalar(REFUNDED, {"id": body.payment_id}) or 0
+    payment = LedgerEntry(
+        kind=EntryKind.PAYMENT, amount_clp=found.amount_clp, status=EntryStatus.VALIDATED
+    )
+    try:
+        settlement = billing.undo_payment(period, payment, given_back, body.reason)
+    except InvalidTransition:
+        raise payment_void_refused(
+            PaymentVoidRefusal.NOTHING_LEFT, "nothing is left of the payment to undo"
+        ) from None
+    columns = (
+        {"extra_line_id": found.extra_line_id}
+        if found.extra_line_id is not None
+        else {"membership_id": found.membership_id, "billing_period_id": found.billing_period_id}
+    )
+    if found.extra_line_id is not None:
+        before = Figures(outstanding_clp=period.outstanding_clp, balance_clp=period.outstanding_clp)
+    else:
+        before = await figures(session, found.membership_id, period)
+    entry = await insert_entry(
+        session, settlement.entry, refund_of=body.payment_id, corrects=body.payment_id, **columns
+    )
+
+    reverted = None
+    credit = (
+        None
+        if found.extra_line_id is not None
+        else (await session.execute(CARRIED_CREDIT, {"id": body.payment_id})).first()
+    )
+    if credit is not None:
+        reverted = await insert_entry(
+            session,
+            billing.revert_credit(credit.amount_clp, body.reason),
+            membership_id=found.membership_id,
+            billing_period_id=None,
+            corrects=credit.id,
+        )
+    entry_ids = [entry.id, *([reverted.id] if reverted else [])]
+
+    if found.extra_line_id is not None:
+        left = settlement.period.outstanding_clp
+        await record_line_correction(
+            session,
+            line_id=found.extra_line_id,
+            entry_ids=entry_ids,
+            purpose=Purpose.MISTAKE.value,
+            reason=entry.note,
+            before=before,
+            after=Figures(outstanding_clp=left, balance_clp=left),
+            payment_id=str(body.payment_id),
+        )
+        result = RecordedPaymentVoid(
+            void=entry, reverted=None, period=line_after(found.extra_line_id, settlement.period)
+        )
+    else:
+        after = await figures(session, found.membership_id, settlement.period)
+        await record_correction(
+            session,
+            membership_id=found.membership_id,
+            billing_period_id=found.billing_period_id,
+            entry_ids=entry_ids,
+            purpose=Purpose.MISTAKE.value,
+            reason=entry.note,
+            before=before,
+            after=after,
+            payment_id=str(body.payment_id),
+        )
+        result = RecordedPaymentVoid(
+            void=entry,
+            reverted=reverted,
+            period=period_after(found.billing_period_id, settlement.period),
+        )
+    await send_payment_voided(
+        session, found, entry, settlement.period.outstanding_clp, notices, background
+    )
+    return result
+
+
+async def send_payment_voided(
+    session: AsyncSession,
+    found: Any,
+    undone: Entry,
+    outstanding_clp: int,
+    notices: Notices,
+    background: BackgroundTasks,
+) -> None:
+    """Tell the student, or their guardian, that a payment whose receipt they hold was
+    undone, and what they owe now: the membership's balance, or what is left of the
+    cobro line. After the response, which is after it has committed. Never the admin's
+    reason: only that it was a mistake in the records."""
+    context: dict[str, Any] = {
+        "amount_clp": undone.amount_clp,
+        "paid_on": found.paid_on,
+        "charge_title": None,
+        "outstanding_clp": 0,
+        "balance_clp": 0,
+    }
+    if found.extra_line_id is not None:
+        facts, contact = await line_facts(session, found.extra_line_id)
+        context |= {"charge_title": facts.title, "outstanding_clp": outstanding_clp}
+    else:
+        facts, contact = await period_facts(session, found.billing_period_id)
+        context["balance_clp"] = await balance(session, found.membership_id)
+    if contact is None or contact.email is None:
+        logger.info("payment voided: no email to send it to", extra={"entry_id": str(undone.id)})
+        return
+    notice = Notice(
+        PAYMENT_VOIDED,
+        to=contact.email,
+        person_id=contact.person_id,
+        gym_id=facts.gym_id,
+        context={
+            "name": contact.name,
+            "gym": facts.gym_name,
+            "dependent_name": facts.person_name if contact.on_behalf_of else None,
+            **context,
+        },
+    )
+    background.add_task(notices.send, notice)
+
+
 # The period starts after its membership was cancelled, in the gym's timezone: paid
 # ahead (#196) by a member who then left.
 AFTER_LEAVING = text(
@@ -1048,9 +1245,10 @@ EXPECTED_STATUSES = ("active", "lapsed")
 
 # The book's KPIs. Collected and expected are the month's; pending and overdue, and the
 # membership counts, are how the gym stands today. Collected is net of the month's
-# refunds, which it reports beside it (#126). Overdue is every unpaid period past due
-# (`v_overdue`), as the owner's "Vencidos" lists them: a lapsed, frozen or cancelled
-# membership still owes what it owed (#207).
+# refunds, which it reports beside it (#126), and of the payments undone as recorded
+# by mistake (#281), "Pagos anulados", which it reports beside those. Overdue is every
+# unpaid period past due (`v_overdue`), as the owner's "Vencidos" lists them: a lapsed,
+# frozen or cancelled membership still owes what it owed (#207).
 #
 # Expected ("Esperado") is what is owed for the month: the periods falling due in it of
 # active and lapsed memberships, since a lapsed member still owes what was billed. A
@@ -1069,6 +1267,10 @@ BOOK_KPIS = text(
          WHERE month = :month) AS refunds,
         (SELECT coalesce(sum(extra_income_clp), 0)::bigint FROM v_monthly_income
          WHERE month = :month) AS collected_extra_clp,
+        (SELECT coalesce(sum(corrected_clp), 0)::bigint FROM v_monthly_income
+         WHERE month = :month) AS corrected_clp,
+        (SELECT coalesce(sum(corrections), 0)::bigint FROM v_monthly_income
+         WHERE month = :month) AS corrections,
         pending.amount AS pending_clp, pending.n AS pending_payments,
         overdue.amount AS overdue_clp, overdue.members AS overdue_members,
         overdue.avg_days AS overdue_avg_days,

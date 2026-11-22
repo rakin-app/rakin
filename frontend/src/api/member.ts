@@ -348,6 +348,26 @@ export function recordRestore(body: RestoreRecord): Promise<RecordedRestore> {
   return apiFetch<RecordedRestore>('/api/ledger/restores', { method: 'POST', body: JSON.stringify(body) })
 }
 
+/** Anular un pago registrado por error (#281): all that is left of it undone; the
+ * student is told. */
+export type PaymentVoidRecord = { payment_id: string; reason: string }
+
+export type PaymentVoidRefusal = 'not_validated' | 'nothing_left' | 'a_correction'
+
+/** The period as the undoing leaves it: owing the payment again. */
+export type RecordedPaymentVoid = { period: SettledPeriod }
+
+export function recordPaymentVoid(body: PaymentVoidRecord): Promise<RecordedPaymentVoid> {
+  return apiFetch<RecordedPaymentVoid>('/api/ledger/payment-voids', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** The 409's refusal of "Anular pago", for the form to say why. */
+export function paymentVoidRefused(error: unknown): PaymentVoidRefusal | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const code = (error.body as { detail?: { code?: unknown } } | undefined)?.detail?.code
+  return code === 'not_validated' || code === 'nothing_left' || code === 'a_correction' ? code : null
+}
+
 /** Anular un plan started by mistake (#256): ended as of its start, every unpaid charge voided. */
 export function voidMembership(membershipId: string, reason: string): Promise<Membership> {
   return apiFetch<Membership>(`/api/memberships/${encodeURIComponent(membershipId)}/void`, {

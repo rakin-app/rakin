@@ -5,7 +5,9 @@ who made it (`app.person_id`), when, the reason, whose billing it changed, what 
 touched, and the period and the membership's balance before and after it, read under
 the correction's locks (`app.api.ledger.locked_period`). A void, a restore and an
 adjustment write one each (`app.api.ledger`); a plan voided by mistake writes one per
-period it voids, each marked `plan_void`, a lapsed plan reactivated one with its
+period it voids, each marked `plan_void`, a payment undone as recorded by mistake one
+(#281), on its period or its cobro line (`record_line_correction`, whose figures are
+the line's: what it owes, as both), a lapsed plan reactivated one with its
 status before and after, and a discount set, changed or taken off one with the
 percentage and reason before and after (`app.api.memberships`, #25).
 
@@ -41,6 +43,16 @@ INSERT_CORRECTION = text(
     " current_setting('app.person_id')::uuid, m.person_id, :action, :reason,"
     " CAST(:detail AS jsonb)"
     " FROM membership m WHERE m.id = :membership_id"
+)
+
+
+# The same, for a correction of a cobro extra line (#195): whose the line is.
+INSERT_LINE_CORRECTION = text(
+    "INSERT INTO audit_event (gym_id, at, actor_id, person_id, action, reason, detail)"
+    " SELECT current_setting('app.gym_id')::uuid, now(),"
+    " current_setting('app.person_id')::uuid, l.person_id, :action, :reason,"
+    " CAST(:detail AS jsonb)"
+    " FROM extra_line l WHERE l.id = :line_id"
 )
 
 
@@ -99,6 +111,41 @@ async def record_audit(
     )
     if result.rowcount != 1:  # type: ignore[attr-defined]
         raise RuntimeError(f"no audit row for the correction of membership {membership_id}")
+
+
+async def record_line_correction(
+    session: AsyncSession,
+    *,
+    line_id: uuid.UUID,
+    entry_ids: list[uuid.UUID],
+    purpose: str,
+    reason: str | None,
+    before: Figures,
+    after: Figures,
+    **detail: Any,
+) -> None:
+    """`record_correction` for a cobro extra line, which has no membership: the line's
+    person is whose, and its figures are what the line owes."""
+    result = await session.execute(
+        INSERT_LINE_CORRECTION,
+        {
+            "action": LEDGER_CORRECTED,
+            "reason": reason,
+            "line_id": line_id,
+            "detail": json.dumps(
+                {
+                    "extra_line_id": str(line_id),
+                    "purpose": purpose,
+                    "entry_ids": [str(e) for e in entry_ids],
+                    "before": before.model_dump(),
+                    "after": after.model_dump(),
+                    **detail,
+                }
+            ),
+        },
+    )
+    if result.rowcount != 1:  # type: ignore[attr-defined]
+        raise RuntimeError(f"no audit row for the correction of line {line_id}")
 
 
 # A person's corrections, newest first, with who made each and the period it touched.

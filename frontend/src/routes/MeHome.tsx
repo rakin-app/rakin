@@ -500,6 +500,9 @@ function title(payment: MyPayment, year: string): string {
   const month = payment.period_start ? t.common.month(payment.period_start, year) : null
   const what = payment.charge_title ?? month
   if (payment.kind === 'payment') return what ?? words.payment
+  // Undone as recorded by mistake (#281), and the credit it carried with it.
+  if (payment.purpose === 'mistake') return words.paymentVoid
+  if (payment.purpose === 'revert' && !payment.period_start) return words.creditReverted
   if (payment.kind === 'adjustment' && what === null) return words.credit
   const kind = payment.kind === 'refund' ? words.refund : payment.amount_clp > 0 ? words.discount : words.surcharge
   if (payment.charge_title) return `${kind} · ${payment.charge_title}`
@@ -510,6 +513,8 @@ function title(payment: MyPayment, year: string): string {
  * what is owed, a discount `−$5.000` and a surcharge `+$5.000`; a credit as held. */
 function amount(payment: MyPayment): string {
   if (payment.kind === 'refund') return t.common.signedClp(-payment.amount_clp)
+  // A credit taken back with its payment undone (#281): money no longer held.
+  if (payment.purpose === 'revert' && !payment.period_start) return t.common.signedClp(payment.amount_clp)
   if (payment.kind === 'adjustment' && payment.period_start) return t.common.adjustmentClp(payment.amount_clp)
   return t.common.clp(payment.amount_clp)
 }
@@ -517,6 +522,7 @@ function amount(payment: MyPayment): string {
 function detail(payment: MyPayment, timeZone: string): string {
   const words = copy.history
   const made = when(payment.validated_at ?? payment.created_at, timeZone)
+  if (payment.purpose === 'mistake' || payment.purpose === 'revert') return words.voided(made)
   if (payment.kind === 'refund') return words.refunded(made)
   if (payment.kind === 'adjustment') {
     if (!payment.period_start) return [payment.note, made].filter(Boolean).join(' · ')

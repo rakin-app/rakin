@@ -29,8 +29,10 @@ import {
   reactivationQuery,
   reactivationRefused,
   recordAdjustment,
+  paymentVoidRefused,
   recordPayment,
   recordPaymentAhead,
+  recordPaymentVoid,
   recordRefund,
   recordRestore,
   recordVoid,
@@ -56,6 +58,7 @@ import {
   type TimelineEntry,
 } from '../api/member'
 import { myAccessQuery, readsLedger, type Access } from '../api/me'
+import { welcomeQuery } from '../api/people'
 import { remindersQuery } from '../api/reminders'
 import { useGymToday } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
@@ -409,7 +412,7 @@ function Standing({
         )}
       </Card>
       {earlier}
-      {data && <Ledger membership={membership} ledger={data} named={named} />}
+      {data && <Ledger personId={personId} membership={membership} ledger={data} named={named} />}
     </>
   )
 }
@@ -2126,6 +2129,108 @@ function ChangeAmountForm({
   )
 }
 
+/** A payment line's fixes, in the design's order (docs/design/billing-corrections.md, section 5). */
+const PAYMENT_FIXES = ['voidPayment', 'refund'] as const
+
+/** What a refused "Anular pago" says (#281). */
+function paymentVoidRefusal(error: Error): string {
+  return copy.voidPaymentRefused[paymentVoidRefused(error) ?? 'failed']
+}
+
+/** "Anular pago" (#281): a payment recorded by mistake (a wrong amount, the wrong member,
+ * money that never arrived) is undone whole, and its period owes it again. A second step
+ * says whom the notice goes to before it is sent; the reason is staff's alone. */
+function VoidPaymentForm({
+  personId,
+  payment,
+  ledger,
+  onCancel,
+  onDone,
+}: {
+  personId: string
+  payment: RefundablePayment
+  ledger: MembershipLedger
+  onCancel: () => void
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const form = copy.voidPaymentForm
+  const id = useId()
+  const hint = useId()
+  const [reason, setReason] = useState('')
+  const [checked, setChecked] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const person = useQuery(personQuery(personId))
+  const welcome = useQuery(welcomeQuery(personId))
+  const reasonOk = reason.trim() !== ''
+  const month = monthName(payment.period_start)
+  const back = payment.refundable_clp
+  const owed = ledger.periods.find((p) => p.id === payment.billing_period_id)?.outstanding_clp ?? 0
+  // Whom the notice goes to: the guardian, for a dependent; nobody with no email.
+  const who = welcome.data?.guardian ?? person.data?.name ?? ''
+  const notice = welcome.data && !welcome.data.to ? form.noEmail(who) : form.notice(who)
+
+  const undone = useSubmit({
+    offline: 'refuse',
+    mutationFn: () => recordPaymentVoid({ payment_id: payment.id, reason: reason.trim() }),
+    onSuccess: async () => {
+      onDone(form.done(month, clp(back)))
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setChecked(true)
+    if (!reasonOk) return
+    if (confirming) undone.mutate()
+    else setConfirming(true)
+  }
+
+  return (
+    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+      <p className="member__detail">{form.intro}</p>
+      <label htmlFor={id} className="member__label">
+        {form.reason}
+      </label>
+      <Input
+        id={id}
+        type="text"
+        maxLength={500}
+        value={reason}
+        readOnly={confirming}
+        aria-describedby={hint}
+        aria-invalid={checked && !reasonOk}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <span id={hint} className="member__detail">
+        {form.reasonHint}
+      </span>
+      {checked && !reasonOk && (
+        <Banner tone="error">
+          {form.reasonNeeded}
+        </Banner>
+      )}
+      <FixPreview month={month} owed={[owed, owed + back]} balance={[ledger.balance_clp, ledger.balance_clp + back]} />
+      {confirming && <Banner tone="info">{notice}</Banner>}
+      {undone.error && (
+        <Banner tone="error">
+          {paymentVoidRefusal(undone.error)}
+        </Banner>
+      )}
+
+      <div className="member__form-actions">
+        <Button disabled={undone.isPending} onClick={confirming ? () => setConfirming(false) : onCancel}>
+          {confirming ? form.back : form.cancel}
+        </Button>
+        <Button type="submit" variant="primary" disabled={undone.isPending} busy={undone.isPending}>
+          {undone.isPending ? form.working : confirming ? form.confirm(clp(back)) : form.submit(clp(back))}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
 /** "Devolver", from the plan card, or "Reembolsar" from a payment's Libro line (#279). */
 function RefundForm({
   payments,
@@ -2284,7 +2389,17 @@ const LEDGER_SHOWN = 4
 
 /** The Libro: each line with something to fix a button that opens its fixes under it
  * (#279), one line at a time. */
-function Ledger({ membership, ledger, named = false }: { membership: Membership; ledger: MembershipLedger; named?: boolean }) {
+function Ledger({
+  personId,
+  membership,
+  ledger,
+  named = false,
+}: {
+  personId: string
+  membership: Membership
+  ledger: MembershipLedger
+  named?: boolean
+}) {
   const [all, setAll] = useState(false)
   const [fixing, setFixing] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -2300,7 +2415,8 @@ function Ledger({ membership, ledger, named = false }: { membership: Membership;
   }
   const cancel = () => setFixing(null)
 
-  /** The line's fixes, if it has any: a charge's, or a payment's refund. */
+  /** The line's fixes, if it has any: a charge's, or a payment's: "Anular pago" (#281)
+   * and its refund. */
   const fixesOf = (entry: TimelineEntry): ReactElement | null => {
     if (entry.kind === 'charge') {
       const period = entry.billing_period_id === null ? undefined : periods.get(entry.billing_period_id)
@@ -2313,8 +2429,18 @@ function Ledger({ membership, ledger, named = false }: { membership: Membership;
     const payment = entry.kind === 'payment' ? refundable.get(entry.id) : undefined
     if (!payment) return null
     return (
-      <Fixes title={copy.fix.payment(monthName(payment.period_start))} fixes={['refund']} label={() => copy.fix.refund}>
-        {() => <RefundForm payments={[payment]} ledger={ledger} onCancel={cancel} onDone={finish} />}
+      <Fixes
+        title={copy.fix.payment(monthName(payment.period_start))}
+        fixes={PAYMENT_FIXES}
+        label={(f) => copy.fix[f]}
+      >
+        {(fix) =>
+          fix === 'voidPayment' ? (
+            <VoidPaymentForm personId={personId} payment={payment} ledger={ledger} onCancel={cancel} onDone={finish} />
+          ) : (
+            <RefundForm payments={[payment]} ledger={ledger} onCancel={cancel} onDone={finish} />
+          )
+        }
       </Fixes>
     )
   }
@@ -2496,6 +2622,7 @@ function correctionTitle(c: Correction): string {
     case 'ledger_corrected':
       if (c.purpose === 'void') return (c.plan_void ? words.planVoid : words.void)(month)
       if (c.purpose === 'restore') return words.restore(month)
+      if (c.purpose === 'mistake') return words.paymentVoid(month)
       // In the member's favour when it left the period owing less.
       return words.adjustment((c.after?.outstanding_clp ?? 0) < (c.before?.outstanding_clp ?? 0), month)
   }
@@ -2550,6 +2677,8 @@ function Entry({
 function entryAmount(entry: TimelineEntry): string {
   if (entry.kind === 'adjustment' && entry.period_start) return t.common.adjustmentClp(entry.amount_clp)
   if (entry.kind === 'refund') return t.common.signedClp(-entry.amount_clp)
+  // A credit taken back with its payment undone (#281).
+  if (entry.purpose === 'revert' && !entry.period_start) return t.common.signedClp(entry.amount_clp)
   return clp(entry.amount_clp)
 }
 
@@ -2600,12 +2729,21 @@ function describeEntry(entry: TimelineEntry, unpaid: boolean, paidClp = 0): { ti
         const title = entry.voids ? words.void(month) : words.restore(month)
         return { title, detail: join(entry.note, by, day), tone: 'muted' }
       }
+      // The credit a payment undone by mistake carried, taken back with it (#281).
+      if (entry.purpose === 'revert' && !entry.period_start) {
+        return { title: words.creditReverted, detail: join(entry.note, day), tone: 'muted' }
+      }
       return {
         title: entry.period_start ? words.adjustment(entry.amount_clp > 0, month) : words.credit,
         detail: join(entry.note, day),
         tone: entry.status === 'rejected' ? 'rejected' : entry.amount_clp < 0 ? 'owed' : 'muted',
       }
     case 'refund':
+      // A payment undone as recorded by mistake (#281): no money left, unlike a refund.
+      if (entry.purpose === 'mistake') {
+        const by = entry.validated_by_name && words.validatedBy(entry.validated_by_name)
+        return { title: words.paymentVoid(month), detail: join(words.mistake, entry.note, by, day), tone: 'muted' }
+      }
       return { title: words.refund(month), detail: join(method, entry.note, day), tone: 'muted' }
   }
 }

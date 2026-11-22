@@ -1,0 +1,20 @@
+{% extends "_layout.txt" %}
+{% block body %}
+Hola, {{ name }}:
+
+El pago de {{ amount_clp | clp }}{% if dependent_name %} de {{ dependent_name }}{% endif %} del {{ paid_on | dia }}{% if charge_title %} por {{ charge_title }}{% endif %} se anuló: fue un error de registro. {{ gym }} no lo cuenta.
+
+{% if charge_title %}
+{% if outstanding_clp > 0 %}
+De este cobro quedan {{ outstanding_clp | clp }} por pagar.
+{% else %}
+Este cobro no tiene nada por pagar.
+{% endif %}
+{% elif balance_clp > 0 %}
+Tu saldo es {{ balance_clp | clp }}.
+{% elif balance_clp < 0 %}
+Tienes {{ -balance_clp | clp }} a favor.
+{% else %}
+Estás al día: no tienes saldo pendiente.
+{% endif %}
+{% endblock %}
