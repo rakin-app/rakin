@@ -23,7 +23,10 @@ An admin corrects a period with an adjustment on it (`adjust`): one in the membe
 favour counts towards it as a payment does, one against them is owed on top of its
 amount due. A refund gives back part or all of a payment (`refund`) and no longer
 counts towards the payment's period, which may open again (#38). A charge made by
-mistake is voided (`void`): an adjustment of all the period still owes (#256).
+mistake is voided (`void`): an adjustment of all the period still owes (#256). A
+payment recorded by mistake is undone (`undo_payment`, #281): a refund of what is left
+of it, which the reports count as a correction rather than money given back, and the
+credit it carried, if any, reverted (`revert_credit`).
 """
 
 from collections.abc import Callable, Iterable
@@ -198,6 +201,44 @@ def refund(
         kind=EntryKind.REFUND, amount_clp=amount_clp, status=EntryStatus.VALIDATED, note=note
     )
     return _resettled(period, entry, -amount_clp)
+
+
+def undo_payment(
+    period: BillingPeriod, payment: LedgerEntry, given_back_clp: int, reason: str
+) -> Settlement:
+    """Undo `payment`, recorded on `period` by mistake (#281): a refund of all that is left
+    of it after the `given_back_clp` its refunds took, validated as the admin makes it,
+    with `reason` for its note. The period owes it again, as after a refund. Never a part
+    of it: what is left is wrong as a whole, and the right amount is recorded anew."""
+    if not reason.strip():
+        raise ValueError("undoing a payment needs a reason")
+    if payment.kind is not EntryKind.PAYMENT or payment.status is not EntryStatus.VALIDATED:
+        raise InvalidTransition("only a validated payment is undone")
+    left = payment.amount_clp - given_back_clp
+    if left <= 0:
+        raise InvalidTransition("nothing is left of the payment to undo")
+    entry = LedgerEntry(
+        kind=EntryKind.REFUND,
+        amount_clp=left,
+        status=EntryStatus.VALIDATED,
+        note=reason.strip(),
+        purpose=Purpose.MISTAKE,
+    )
+    return _resettled(period, entry, -left)
+
+
+def revert_credit(credit_clp: int, reason: str) -> LedgerEntry:
+    """The credit an overpayment carried (`apply`), taken back with the payment undone
+    (#281): an adjustment of minus as much, on no period, as the credit is."""
+    if credit_clp <= 0:
+        raise ValueError("a carried credit is in the member's favour")
+    return LedgerEntry(
+        kind=EntryKind.ADJUSTMENT,
+        amount_clp=-credit_clp,
+        status=EntryStatus.VALIDATED,
+        note=reason.strip(),
+        purpose=Purpose.REVERT,
+    )
 
 
 def validate_payment(period: BillingPeriod, entry: LedgerEntry) -> Settlement:

@@ -284,6 +284,44 @@ describe('Pagos', () => {
     expect(kpis.textContent).toContain('Cobrado$2.070.00047 pagos validados · Devuelto $45.000')
   })
 
+  it('shows payments undone by mistake as "Pagos anulados", apart from the refunds (#281)', async () => {
+    const undone = entry({
+      id: 'undo',
+      kind: 'refund',
+      note: 'era de otro alumno',
+      refund_of: 'pay',
+      purpose: 'mistake',
+      validated_by_name: 'Martín',
+    })
+    stubApi({
+      book: () => ({
+        ...BOOK,
+        items: [undone],
+        total: 1,
+        kpis: { ...BOOK.kpis, collected_clp: 2070000, corrected_clp: 45000, corrections: 1 },
+      }),
+    })
+    renderAt('/admin/pagos')
+
+    const rows = within(await table()).getAllByRole('row').slice(1)
+    expect(rows.map(cells)).toEqual([
+      ['8 nov 14:12', 'Diego Morales', 'Pago anulado', 'nov 2026', 'Error de registro · era de otro alumno', 'Validado · Martín', '−$45.000'],
+    ])
+    const kpis = screen.getByRole('region', { name: copy.kpisLabel })
+    expect(kpis.textContent).toContain('Cobrado$2.070.00047 pagos validados · Pagos anulados $45.000')
+    expect(kpis.textContent).not.toContain('Devuelto')
+  })
+
+  it('names the credit reverted with a payment undone, not a plain adjustment (#281)', async () => {
+    const reverted = entry({ id: 'rev', kind: 'adjustment', amount_clp: -5000, period: null, purpose: 'revert', note: 'x' })
+    stubApi({ book: () => ({ ...BOOK, items: [reverted], total: 1 }) })
+    renderAt('/admin/pagos')
+
+    const [row] = within(await table()).getAllByRole('row').slice(1)
+    expect(cells(row!)[2]).toBe(copy.creditReverted)
+    expect(cells(row!)[6]).toBe('−$5.000')
+  })
+
   it('lists each entry with its date, student, kind, period, medium, status and amount', async () => {
     stubApi()
     renderAt('/admin/pagos')

@@ -160,6 +160,9 @@ export type MyPayment = {
   // A rejection's note, or a carried credit's: the notes written for the student.
   note: string | null
   created_at: string
+  // `mistake` on a refund undoing a payment recorded by mistake (#281), `revert` on the
+  // credit it carried, taken back with it.
+  purpose?: string | null
 }
 
 /** The student page, "Mi página": what is due next, where to pay it, what was paid. */

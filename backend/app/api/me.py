@@ -79,7 +79,8 @@ DEPENDENTS = f"""
 # refund or a discount never pushes a payment off the list. Newest recorded first;
 # entries recorded at the same moment go by the period they pay, latest first. Only the
 # notes written for the student are shown: a rejection's, and a carried credit's
-# ("Pagó $X, quedan $Y a favor"); an admin's note on anything else is theirs.
+# ("Pagó $X, quedan $Y a favor"); an admin's note on anything else is theirs, the
+# reason a credit was reverted with its payment undone (#281) included.
 PAYMENTS = f"""
     WITH mine AS (
         SELECT e.id, e.kind, w.person_id, gp.name AS person_name, e.amount_clp, e.status,
@@ -87,9 +88,9 @@ PAYMENTS = f"""
                e.claimed_at, e.validated_at,
                CASE WHEN e.status = :rejected
                       OR (e.kind = :adjustment AND e.billing_period_id IS NULL
-                          AND e.extra_line_id IS NULL)
+                          AND e.extra_line_id IS NULL AND e.purpose IS NULL)
                     THEN e.note END AS note,
-               e.created_at
+               e.purpose, e.created_at
         FROM ledger_entry e
         LEFT JOIN membership m ON m.id = e.membership_id
         LEFT JOIN extra_line l ON l.id = e.extra_line_id

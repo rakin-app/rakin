@@ -98,7 +98,7 @@ The phone is a contact, never an identity: phones change, are shared within a fa
 | `expense_recurring` | id, gym\_id, category\_id, payee, method, amount\_clp, amount\_kind, day\_of\_month, active, created\_by, created\_at, updated\_at | a gasto fijo (#315): rent, internet (`fixed`, recorded at its amount in one tap) or power, water, gas (`estimated`, recorded through the form at the bill's figure), on its day of the month; edited and paused, never deleted; Gastos lists the active ones with no expense from them that month. Nothing records one by itself: no job, trigger or read writes an expense. Read with `expenses_read`, written with `expenses_write` |
 | `expense_skip` | gym\_id, recurring\_id, month, created\_by, created\_at | "No este mes" (#315): a template off one month's card; deleted to take it back, the one DELETE `rakin_app` has on the expenses' tables |
 
-Derived views, not tables: `v_overdue` (billing periods past due with no validated payment), `v_balance` (per membership, sum of ledger; a cobro line's entries are not a membership's), `v_inactive` (last attendance > N days), `v_monthly_income` (validated payments less refunds, by month).
+Derived views, not tables: `v_overdue` (billing periods past due with no validated payment), `v_balance` (per membership, sum of ledger; a cobro line's entries are not a membership's), `v_inactive` (last attendance > N days), `v_monthly_income` (validated payments less refunds, by month; a payment undone as recorded by mistake, #281, nets like a refund but is reported apart, in `corrected_clp`, not in `refunds_clp`).
 
 ## Core state machines
 

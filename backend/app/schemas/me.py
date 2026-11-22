@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from app.domain.ledger import EntryKind, EntryStatus
+from app.domain.ledger import EntryKind, EntryStatus, Purpose
 from app.schemas.class_tags import TagHours, TagOn
 from app.schemas.extra_charges import MyExtraLine
 from app.schemas.freeze_requests import MyPlan
@@ -58,6 +58,9 @@ class MyPayment(BaseModel):
     # Why it was rejected: the admin's note, written for the student.
     note: str | None
     created_at: datetime
+    # Why a correction was written (#278): `mistake` on a refund undoing a payment
+    # recorded by mistake (#281), "Pago anulado: error de registro". Never the reason.
+    purpose: Purpose | None = None
 
 
 class MyAttendance(BaseModel):

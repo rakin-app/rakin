@@ -71,6 +71,10 @@ export type BookKpis = {
   refunds: number
   // What of `collected_clp` the cobros extra brought in.
   collected_extra_clp?: number
+  // Payments undone as recorded by mistake (#281), "Pagos anulados": `collected_clp`
+  // is net of them too, and `refunded_clp` leaves them out.
+  corrected_clp?: number
+  corrections?: number
   expected_clp: number
   // Today's, whichever month is shown.
   pending_clp: number

@@ -533,6 +533,7 @@ function Kpis({ kpis }: { kpis: BookKpis }) {
       amount: kpis.collected_clp,
       detail:
         words.collectedDetail(kpis.collected_payments, kpis.refunds ? clp(kpis.refunded_clp) : null) +
+        (kpis.corrections ? words.corrected(clp(kpis.corrected_clp ?? 0)) : '') +
         (kpis.collected_extra_clp ? copy.kpiExtra(clp(kpis.collected_extra_clp)) : ''),
     },
     { key: 'pending', label: words.pending, amount: kpis.pending_clp, detail: words.pendingDetail(kpis.pending_payments) },
@@ -603,6 +604,9 @@ function entryDate(entry: BookEntry, timeZone: string): string {
 function kindLabel(entry: BookEntry): string {
   if (entry.voids) return copy.void
   if (entry.purpose === 'restore') return copy.restore
+  // A payment undone as recorded by mistake (#281), and its credit taken back.
+  if (entry.purpose === 'mistake') return copy.paymentVoid
+  if (entry.purpose === 'revert' && !entry.period) return copy.creditReverted
   if (entry.kind === 'adjustment' && entry.period) return copy.adjustment[entry.amount_clp > 0 ? 'favor' : 'owed']
   return copy.kind[entry.kind]
 }
@@ -612,6 +616,8 @@ function kindLabel(entry: BookEntry): string {
 function bookAmount(entry: BookEntry): string {
   if (entry.kind === 'adjustment' && entry.period) return t.common.adjustmentClp(entry.amount_clp)
   if (entry.kind === 'refund') return t.common.signedClp(-entry.amount_clp)
+  // A credit taken back with its payment undone (#281).
+  if (entry.purpose === 'revert' && !entry.period) return t.common.signedClp(entry.amount_clp)
   return clp(entry.amount_clp)
 }
 
@@ -680,6 +686,12 @@ function detailLabel(entry: BookEntry): string {
       ? t.admin.member.ledger.discounted(entry.period.discount_pct, entry.period.discount_reason ?? null)
       : null
     return [plan, discount, membership].filter(Boolean).join(' · ')
+  }
+  // A payment undone as recorded by mistake (#281): no money moved, so no method; the
+  // reason is staff's, and the book is staff's.
+  if (entry.purpose === 'mistake') {
+    const category = entry.extra ? t.admin.extra.category[entry.extra.category] : null
+    return [category, copy.mistake, entry.note].filter(Boolean).join(' · ')
   }
   // A cobro extra, labelled by its category (#195), then how the money came.
   if (entry.extra) {

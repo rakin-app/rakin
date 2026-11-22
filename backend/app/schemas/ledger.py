@@ -145,6 +145,34 @@ class RestoreConflict(BaseModel):
     message: str
 
 
+class PaymentVoidRecord(BaseModel):
+    """Anular un pago registrado por error (#281): a wrong amount, the wrong member, money
+    that never arrived. All that is left of it is undone; the right one is recorded anew."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # The validated payment to undo.
+    payment_id: uuid.UUID
+    # Mandatory, for staff: what the mistake was. The student is told only that it was one.
+    reason: Note
+
+
+class PaymentVoidRefusal(StrEnum):
+    """Why a payment cannot be undone, for the ficha to say so."""
+
+    # Pending or rejected: a proof is reviewed, not undone.
+    NOT_VALIDATED = "not_validated"
+    # Refunded, moved or undone already, all of it.
+    NOTHING_LEFT = "nothing_left"
+    # A correction's own entry (a payment moved in, #280): undone by its inverse.
+    A_CORRECTION = "a_correction"
+
+
+class PaymentVoidConflict(BaseModel):
+    code: PaymentVoidRefusal
+    message: str
+
+
 class Entry(BaseModel):
     id: uuid.UUID
     # The membership whose period it settles, or none for one on a cobro line (#195).
@@ -199,6 +227,15 @@ class RecordedVoid(BaseModel):
 class RecordedRestore(BaseModel):
     restore: Entry
     # The period as the restore leaves it: owing the void's amount again.
+    period: Period
+
+
+class RecordedPaymentVoid(BaseModel):
+    # The refund, `purpose = 'mistake'`, of what was left of the payment.
+    void: Entry
+    # The credit the payment carried, reverted with it; none if it carried none.
+    reverted: Entry | None = None
+    # The period, or the cobro line, as the undoing leaves it: owed again.
     period: Period
 
 
@@ -551,6 +588,10 @@ class BookKpis(BaseModel):
     refunds: int
     # What of `collected_clp` the cobros extra brought in (#195), net of their refunds.
     collected_extra_clp: int = 0
+    # The month's payments undone as recorded by mistake (#281), "Pagos anulados":
+    # `collected_clp` is net of them too, and `refunded_clp` leaves them out.
+    corrected_clp: int = 0
+    corrections: int = 0
     # Payments waiting for review, today.
     pending_clp: int
     pending_payments: int

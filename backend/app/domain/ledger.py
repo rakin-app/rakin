@@ -7,7 +7,9 @@ Amounts are positive and the kind says which way they go, except an adjustment's
 sign says which way it goes, positive in the member's favour and negative owed (#38).
 A void is an adjustment in the member's favour of whatever its period still owes, so
 that nothing is owed on it any more (#256). A restore puts a void's amount back on its
-period, as if the void had not happened (#278).
+period, as if the void had not happened (#278). A payment recorded by mistake is undone
+with a refund of what is left of it (`mistake`, #281), and the credit it carried with
+an adjustment of minus as much (`revert`).
 """
 
 from dataclasses import dataclass, replace
@@ -55,7 +57,8 @@ class LedgerEntry:
     status: EntryStatus = EntryStatus.PENDING
     note: str | None = None
     # Why a correction was written, its reason in `note`: a void of what its period
-    # still owes (#256), a restore of a void (#278); `None` for any other entry.
+    # still owes (#256), a restore of a void (#278), a payment undone (#281) and the
+    # credit it carried reverted; `None` for any other entry.
     purpose: Purpose | None = None
 
     def __post_init__(self) -> None:
@@ -72,6 +75,10 @@ class LedgerEntry:
             self.kind is not EntryKind.ADJUSTMENT or self.amount_clp >= 0
         ):
             raise ValueError("a restore is an adjustment owed by the member")
+        if self.purpose is Purpose.MISTAKE and self.kind is not EntryKind.REFUND:
+            raise ValueError("a payment undone is a refund of it")
+        if self.purpose is Purpose.REVERT and self.kind is not EntryKind.ADJUSTMENT:
+            raise ValueError("a revert is an adjustment")
 
 
 def _move(entry: LedgerEntry, to: EntryStatus) -> None:

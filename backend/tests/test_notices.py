@@ -29,6 +29,7 @@ from app.notices import (
     FREEZE_REQUESTED,
     JOIN_APPROVED,
     MAGIC_LINK,
+    PAYMENT_VOIDED,
     PLATFORM_LINK,
     PROOF_RECEIVED,
     PROOF_REJECTED,
@@ -83,6 +84,7 @@ TEMPLATES = [
     STATEMENT,
     PROOF_RECEIVED,
     RECEIPT,
+    PAYMENT_VOIDED,
     PROOF_REJECTED,
     STAFF_INVITE,
     JOIN_APPROVED,
@@ -253,6 +255,7 @@ def test_every_notice_but_the_sign_in_link_carries_a_page_link() -> None:
         "statement",
         "proof_received",
         "receipt",
+        "payment_voided",
         "proof_rejected",
         "staff_invite",
         "join_approved",
@@ -416,6 +419,36 @@ def test_the_receipt_has_the_period_and_the_balance(
     for said in says:
         assert said in email.text
         assert said in html_text
+
+
+@pytest.mark.parametrize(
+    ("balance", "says"),
+    [
+        (45000, "Tu saldo es $45.000."),
+        (0, "Estás al día: no tienes saldo pendiente."),
+        (-3000, "Tienes $3.000 a favor."),
+    ],
+)
+def test_a_payment_undone_says_it_was_a_mistake_and_the_balance(balance: int, says: str) -> None:
+    context = {
+        "name": "Ana",
+        "gym": "Academia Sur",
+        "amount_clp": 30000,
+        "paid_on": date(2026, 11, 3),
+        "dependent_name": None,
+        "charge_title": None,
+        "outstanding_clp": 0,
+        "balance_clp": balance,
+    }
+    email = render(Notice(PAYMENT_VOIDED, "ana@example.cl", PERSON, GYM, context))
+
+    assert email.subject == "Pago anulado"
+    said = "El pago de $30.000 del 3 nov se anuló: fue un error de registro."
+    assert said in email.text
+    assert email.html is not None
+    html_text = re.sub(r"</?strong>", "", email.html)
+    assert said in html_text
+    assert says in email.text and says in html_text
 
 
 # --- the unsubscribe token ------------------------------------------------------

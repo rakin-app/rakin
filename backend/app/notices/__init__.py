@@ -126,6 +126,9 @@ STATEMENT = Template("statement")
 PAYMENT_OVERDUE = Template("payment_overdue")
 PROOF_RECEIVED = Template("proof_received")
 RECEIPT = Template("receipt")
+# A payment undone as recorded by mistake (#281): the receipt the student holds is no
+# longer right, so they are told, as essential as the receipt was.
+PAYMENT_VOIDED = Template("payment_voided")
 PROOF_REJECTED = Template("proof_rejected")
 # A cobro extra (#195), as it is created and as a reminder of it.
 EXTRA_CHARGE = Template("extra_charge")
@@ -211,6 +214,11 @@ def _mes(value: date) -> str:
     return _MESES[value.month - 1]
 
 
+def _dia(value: date) -> str:
+    """A day as the app writes it short (`shortDay`): "3 nov"."""
+    return f"{value.day} {_MESES[value.month - 1][:3]}"
+
+
 def _porcentaje(value: int) -> str:
     """A whole percentage as Chile writes it, as the app does: "18 %"."""
     return f"{value}\u00a0%"
@@ -257,6 +265,7 @@ def environment(directory: Path = TEMPLATES_DIR) -> Environment:
     env.filters["fecha_larga"] = _defined(_fecha_larga)
     env.filters["code"] = _defined(_code)
     env.filters["mes"] = _defined(_mes)
+    env.filters["dia"] = _defined(_dia)
     env.filters["porcentaje"] = _defined(_porcentaje)
     env.filters["duracion"] = _defined(_duracion)
     return env

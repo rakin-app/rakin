@@ -348,7 +348,9 @@ def test_the_csv_lists_the_months_entries_and_its_totals_match_the_book(
     assert totals["Total ajustado (a favor +, en contra -)"] == 5_000
     assert totals["Total anulado"] == 45_000
     assert totals["Total devuelto"] == 10_000 == book["refunded_clp"]
-    assert totals["Cobrado neto (pagado menos devuelto)"] == 40_000 == book["collected_clp"]
+    assert (
+        totals["Cobrado neto (pagado menos devuelto y anulado)"] == 40_000 == book["collected_clp"]
+    )
     # Ana owes 45.000 less 30.000 and 5.000, plus the 10.000 given back; Beto nothing;
     # Carla 40.000 less 15.000 and April's 7.000.
     assert totals["Saldo pendiente de los cargos del mes"] == 20_000 + 0 + 18_000
@@ -383,7 +385,7 @@ def test_the_xlsx_has_a_sheet_each_with_dates_and_integers_typed(
     assert [(r[1], r[7], r[8]) for r in pending] == [("Carla Díaz", 20_000, "Por validar")]
     lines = [(r[0].value, r[1].value) for r in book["Totales"].iter_rows(min_row=2)]
     totals = dict(lines[: lines.index((None, None))])
-    assert totals["Cobrado neto (pagado menos devuelto)"] == 40_000
+    assert totals["Cobrado neto (pagado menos devuelto y anulado)"] == 40_000
     assert lines[-1] == (ledger_export.FILED_BY, None)
 
 
@@ -488,6 +490,7 @@ def test_a_period_and_concept_read_as_the_accountant_reads_them() -> None:
         "01-11-2026 al 30-11-2026"
     )
     assert ledger_export.kind_label("adjustment", voids=True) == "Anulación"
+    assert ledger_export.kind_label("refund", voids=False, purpose="mistake") == "Pago anulado"
     assert [ledger_export.safe_text(s) for s in ("+56", "@x", "-1", "Ana")] == [
         "'+56",
         "'@x",
@@ -589,7 +592,10 @@ def test_whoever_sees_expenses_gets_a_gastos_sheet_and_a_resumen(
     assert finanzas["expenses_clp"] == resumen["Total salidas"]
     assert finanzas["result_clp"] == resumen["Resultado (entradas menos salidas)"]
     totals = dict((r[0], r[1]) for r in values(book, "Totales")[1:])
-    assert totals["Cobrado neto (pagado menos devuelto)"] == resumen["Entradas (cobrado neto)"]
+    assert (
+        totals["Cobrado neto (pagado menos devuelto y anulado)"]
+        == resumen["Entradas (cobrado neto)"]
+    )
 
 
 @pg

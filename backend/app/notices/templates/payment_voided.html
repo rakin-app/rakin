@@ -1,0 +1,11 @@
+{% extends "_layout.html" %}
+{% block title %}Pago anulado{% endblock %}
+{% block body %}
+<p style="margin:0 0 16px;">Hola, {{ name }}:</p>
+<p style="margin:0 0 16px;">El pago de <strong>{{ amount_clp | clp }}</strong>{% if dependent_name %} de {{ dependent_name }}{% endif %} del {{ paid_on | dia }}{% if charge_title %} por {{ charge_title }}{% endif %} se anuló: fue un error de registro. {{ gym }} no lo cuenta.</p>
+{% if charge_title %}
+<p style="margin:0;">{% if outstanding_clp > 0 %}De este cobro quedan <strong>{{ outstanding_clp | clp }}</strong> por pagar.{% else %}Este cobro no tiene nada por pagar.{% endif %}</p>
+{% else %}
+<p style="margin:0;">{% if balance_clp > 0 %}Tu saldo es <strong>{{ balance_clp | clp }}</strong>.{% elif balance_clp < 0 %}Tienes <strong>{{ -balance_clp | clp }}</strong> a favor.{% else %}Estás al día: no tienes saldo pendiente.{% endif %}</p>
+{% endif %}
+{% endblock %}
