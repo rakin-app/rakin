@@ -210,7 +210,8 @@ def _shifts(
     """What an edit to `anchor` does to the memberships on the plan: with `move`, each
     one not on the day the anchor gives it moves there; with or without it, a move
     pending to a day that is no longer that one is withdrawn. One leaving the plan by a
-    plan change keeps a pending move to that day, which the plan change replaces."""
+    pending plan change is never moved, but a move it has pending to another day is
+    withdrawn the same, with its row in the log; the plan change would replace it."""
     terms = PlanTerms(PlanKind.MONTHLY, anchor=anchor)
     shifts = []
     for membership_id, billable in on_plan:
