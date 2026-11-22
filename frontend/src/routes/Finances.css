@@ -1,6 +1,6 @@
 @import '../styles/media.css';
 
-/* Finanzas (#316): the tabs Resumen and Gastos, the Mes / Año switch, then the month (three
+/* Finanzas (#316): under the money tabs (#531), the Mes / Año switch, then the month (three
    tiles over its lines of money in and out) or the year (twelve rows and the year's
    categories). On a phone the year is rows of figures; from the desktop width each figure
    of Entradas and Salidas has its bar under it, on one scale for the year. */
@@ -25,30 +25,6 @@
 
 .finances__hint--padded {
   padding: 0 var(--space-4) var(--space-4);
-}
-
-/* Resumen and Gastos, as Ajustes draws its sections. */
-.finances-tabs {
-  display: flex;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.finances-tabs__link {
-  display: flex;
-  align-items: center;
-  min-height: var(--control-height);
-  padding: var(--space-2-5) var(--space-3);
-  border-bottom: 2px solid transparent;
-  color: var(--color-text-muted);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-  white-space: nowrap;
-}
-
-.finances-tabs__link[aria-current='page'] {
-  border-bottom-color: var(--color-accent);
-  color: var(--color-text);
 }
 
 .finances__stepper {
@@ -287,6 +263,11 @@
 }
 
 @media (--desktop) {
+  /* The money tabs (#531) at Pagos' height, so the row stays put from tab to tab. */
+  .finances {
+    padding-top: var(--space-8);
+  }
+
   .finances__tiles {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

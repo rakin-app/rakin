@@ -33,11 +33,11 @@ import { Field, FieldError, Input, Select, Textarea } from '../components/Field'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon } from '../components/icons'
 import { PageContainer } from '../components/Layout'
 import { Loading } from '../components/Loading'
+import { MoneyTabs } from '../components/MoneyTabs'
 import { PageHeader, PageTitle } from '../components/PageHeader'
 import { isoDay, shiftMonth } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
-import { FinancesTabs } from './Finances'
 import { RecurringDue, RecurringTemplates } from './RecurringExpenses'
 import './Expenses.css'
 
@@ -101,9 +101,10 @@ function ExpensesPage({ writes }: { writes: boolean }) {
 
   return (
     <PageContainer className="expenses">
+      <MoneyTabs />
       <header className="expenses__header">
         <div className="expenses__heading">
-          <PageTitle>{t.admin.finances.title}</PageTitle>
+          <PageTitle>{copy.title}</PageTitle>
           <p className="expenses__subtitle">{copy.subtitle}</p>
         </div>
         {writes && (
@@ -120,7 +121,6 @@ function ExpensesPage({ writes }: { writes: boolean }) {
           </Button>
         )}
       </header>
-      <FinancesTabs />
 
       <div className="expenses__toolbar">
         <div className="expenses__month" role="group" aria-label={copy.month}>

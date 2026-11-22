@@ -215,13 +215,20 @@ describe('Finanzas', () => {
     expect(nav.queryByRole('link', { name: es.nav.finances })).not.toBeInTheDocument()
   })
 
-  it("is beside Pagos in the sidebar for the titular, and out of the phone's bar", async () => {
+  it("is the money section's middle tab for the titular, under the nav's Pagos (#531)", async () => {
     stubApi()
     renderAt('/admin/finanzas')
     await monthCard()
+    const tabs = within(screen.getByRole('navigation', { name: es.admin.money.tabs.label }))
+    expect(tabs.getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
+      [es.admin.money.tabs.payments, '/admin/pagos'],
+      [es.admin.money.tabs.finances, '/admin/finanzas'],
+      [es.admin.money.tabs.expenses, '/admin/finanzas/gastos'],
+    ])
+    expect(tabs.getByRole('link', { name: es.admin.money.tabs.finances })).toHaveAttribute('aria-current', 'page')
+    expect(tabs.getByRole('link', { name: es.admin.money.tabs.payments })).not.toHaveAttribute('aria-current')
     const nav = within(screen.getByRole('navigation', { name: es.nav.label }))
-    const links = nav.getAllByRole('link').map((l) => l.textContent)
-    expect(links.indexOf(es.nav.finances)).toBe(links.indexOf(es.nav.payments) + 1)
-    expect(nav.getByRole('link', { name: es.nav.finances }).closest('li')).toHaveClass('admin-nav__wide')
+    expect(nav.queryByRole('link', { name: es.nav.finances })).not.toBeInTheDocument()
+    expect(nav.getByRole('link', { name: es.nav.payments })).toHaveAttribute('aria-current', 'page')
   })
 })

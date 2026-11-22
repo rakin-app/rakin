@@ -156,12 +156,6 @@
   display: block;
 }
 
-/* Finanzas, beside Pagos in the sidebar (#316): on a phone it is in Pagos' "Más", so the
-   bar keeps to five tabs. */
-.admin-nav__wide {
-  display: none;
-}
-
 .admin-nav__list {
   display: grid;
   /* One column per tab: a coach has three, an owner five. */
@@ -324,10 +318,6 @@ button.admin-nav__link {
     background: var(--color-sidebar-active);
     color: var(--color-sidebar-active-text);
     transform: translateY(-50%);
-  }
-
-  .admin-nav__wide {
-    display: block;
   }
 
   /* Cerrar sesión, apart from the sections. */
