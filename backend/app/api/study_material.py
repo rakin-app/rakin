@@ -14,7 +14,8 @@ timer's rule. An edit and a removal each write a row in
 the gym's log (`study_material_changed`, `study_material_removed`). Removing hides it
 from members at once; nothing deletes it.
 
-A member reads theirs on the student page (`/api/me/material`), newest first: what
+A member reads theirs on the student page (`/api/me/material`), newest first and a page
+at a time (#548: material never expires, so the list only grows): what
 reaches them or one of their dependents, which the database decides
 (`study_material_class_for`), not this module, with the class it reached them through
 and, for a guardian it reaches only through their dependents, whom.
@@ -25,10 +26,11 @@ log (`study_material_slot_gone`, `app.api.schedule`).
 
 import json
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +43,7 @@ from app.schemas.study_material import (
     MaterialChange,
     MaterialIn,
     MyMaterial,
+    MyMaterialPage,
 )
 from app.tenancy import Tenant, TenantSession, current_tenant
 
@@ -145,12 +148,17 @@ MINE = """
     JOIN program p ON p.id = c.program_id
     LEFT JOIN gym_person gp ON gp.gym_id = m.gym_id AND gp.person_id = m.created_by
     WHERE m.removed_at IS NULL
+      AND (CAST(:before_at AS timestamptz) IS NULL
+           OR m.created_at < CAST(:before_at AS timestamptz)
+           OR (m.created_at = CAST(:before_at AS timestamptz)
+               AND m.id > CAST(:before_id AS uuid)))
     ORDER BY m.created_at DESC, m.id
     LIMIT :limit
 """
 
-# How many the student page lists.
-MINE_SHOWN = 50
+# How many a page of the student page's material holds, unless it asks for fewer.
+MINE_PAGE = 20
+MINE_PAGE_MAX = 50
 
 EDITABLE = ("title", "body", "links", "audience", "starts_on")
 
@@ -409,9 +417,42 @@ async def remove_material(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+def _cursor(material: MyMaterial) -> str:
+    """Where the page after `material` starts: its `created_at` and id, the list's order."""
+    return f"{material.created_at.isoformat()}_{material.id}"
+
+
+def _after(cursor: str) -> tuple[datetime, uuid.UUID]:
+    """A cursor `_cursor` wrote, or a 422."""
+    at, _, material = cursor.rpartition("_")
+    try:
+        parsed = (datetime.fromisoformat(at), uuid.UUID(material))
+    except ValueError:
+        parsed = None
+    if parsed is not None and parsed[0].tzinfo is not None:
+        return parsed
+    raise RequestValidationError(
+        [{"type": "value_error", "msg": "not a cursor of this list", "loc": ("query", "before")}]
+    )
+
+
 @mine.get("/material")
-async def my_material(tenant: CurrentTenant, session: TenantSession) -> list[MyMaterial]:
-    """The material that reaches the signed-in person or a dependent, newest first; one
-    that reaches only dependents names them (`for_names`)."""
-    result = await session.execute(text(MINE), {"me": tenant.person_id, "limit": MINE_SHOWN})
-    return [MyMaterial.model_validate(row, from_attributes=True) for row in result]
+async def my_material(
+    tenant: CurrentTenant,
+    session: TenantSession,
+    before: Annotated[str | None, Query(max_length=100)] = None,
+    limit: Annotated[int, Query(ge=1, le=MINE_PAGE_MAX)] = MINE_PAGE,
+) -> MyMaterialPage:
+    """The material that reaches the signed-in person or a dependent, newest first, a
+    page at a time: `before`, the `next` of the page before, reads the one after it,
+    nothing repeated or skipped. One that reaches only dependents names them
+    (`for_names`)."""
+    at, material = _after(before) if before is not None else (None, None)
+    result = await session.execute(
+        text(MINE),
+        {"me": tenant.person_id, "limit": limit + 1, "before_at": at, "before_id": material},
+    )
+    items = [MyMaterial.model_validate(row, from_attributes=True) for row in result]
+    more = len(items) > limit
+    items = items[:limit]
+    return MyMaterialPage(items=items, next=_cursor(items[-1]) if more else None)

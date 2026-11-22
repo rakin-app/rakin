@@ -65,8 +65,17 @@ const NO_TIME: PersonTime = {
 
 const NO_CLASSES: MyClasses = { timezone: 'America/Santiago', people: [] }
 
-// What `/api/me/material` answers (#537): none unless a test says.
+// What `/api/me/material` answers (#537): none unless a test says, a page at a time
+// (#548), its cursor the last one's id.
 let material: MyMaterial[] = []
+
+function materialPage(url: URL) {
+  const before = url.searchParams.get('before')
+  const limit = Number(url.searchParams.get('limit') ?? 20)
+  const from = before ? material.findIndex((m) => m.id === before) + 1 : 0
+  const items = material.slice(from, from + limit)
+  return { items, next: from + limit < material.length ? items[items.length - 1]!.id : null }
+}
 
 const hoursOf = (tags: TagHours['tags'], untagged = 0): TagHours => ({
   first_day: `${YEAR}-11-01`,
@@ -123,7 +132,7 @@ function stubPage(
       if (url.pathname === '/api/me/classes') return Response.json(classes)
       if (url.pathname === '/api/me/requirements') return Response.json(requirements)
       if (url.pathname === '/api/me/dependents') return Response.json(dependents)
-      if (url.pathname === '/api/me/material') return Response.json(material)
+      if (url.pathname === '/api/me/material') return Response.json(materialPage(url))
       const theirs = /^\/api\/me\/dependents\/([^/]+)\/time$/.exec(url.pathname)?.[1]
       if (theirs && dependentTime[theirs]) return Response.json(dependentTime[theirs])
       if (url.pathname === '/api/me/role') {
@@ -199,6 +208,25 @@ describe('Material de estudio (#537)', () => {
     expect(section.getAllByText(/^Para /)).toHaveLength(1)
     expect(copy.material.forWhom(['León'])).toBe('Para León')
     expect(copy.material.forWhom(['A', 'B', 'C'])).toBe('Para A, B y C')
+  })
+
+  it('shows the recent material, then loads older material a page at a time with nothing repeated or skipped', async () => {
+    material = Array.from({ length: 27 }, (_, n) => ({ ...guard, id: `mat-${n}`, title: `Material ${n}` }))
+    stubPage(diego())
+    renderMe()
+    const user = userEvent.setup()
+
+    const section = within(await screen.findByRole('region', { name: copy.material.title }))
+    const titles = () => section.getAllByRole('button', { name: /^Material \d+/ }).map((row) => row.textContent!.match(/Material \d+/)![0])
+    expect(titles()).toEqual(['Material 0', 'Material 1', 'Material 2', 'Material 3', 'Material 4'])
+
+    await user.click(section.getByRole('button', { name: copy.material.older }))
+    await waitFor(() => expect(titles()).toHaveLength(25))
+    await user.click(section.getByRole('button', { name: copy.material.older }))
+    await waitFor(() => expect(titles()).toHaveLength(27))
+    expect(titles()).toEqual(material.map((m) => m.title))
+    // Nothing older is left to load.
+    expect(section.queryByRole('button', { name: copy.material.older })).not.toBeInTheDocument()
   })
 
   it('shows no section when nothing was shared', async () => {
