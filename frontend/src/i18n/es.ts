@@ -4569,7 +4569,8 @@ export const es = {
       forWhom: (names: string[]) =>
         `Para ${names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}` : names[0]}`,
       links: 'Enlaces',
-      more: (n: number) => `Ver ${n} más`,
+      // Older material, a page at a time (#548).
+      older: 'Ver material anterior',
     },
     classes: {
       title: 'Mis clases',

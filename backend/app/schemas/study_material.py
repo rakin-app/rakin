@@ -142,3 +142,11 @@ class MyMaterial(BaseModel):
     # The dependents it reaches, by name, when it does not reach the signed-in person:
     # a guardian's "Para León".
     for_names: list[str]
+
+
+class MyMaterialPage(BaseModel):
+    """A page of the student page's material, newest first (#548). `next`, when there
+    is older material, is what `before` takes to read the page after this one."""
+
+    items: list[MyMaterial]
+    next: str | None

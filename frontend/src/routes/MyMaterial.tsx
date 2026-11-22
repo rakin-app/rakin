@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { myMaterialQuery, type MyMaterial as Material } from '../api/studyMaterial'
 import { Button } from '../components/Button'
@@ -9,24 +9,22 @@ import '../components/StudyMaterial.css'
 
 const copy = t.me.material
 
-// How many the list shows before "Ver N más".
-const FIRST = 5
-
 /**
  * "Material de estudio" on the student page (#537): what the gym's coaches shared with
- * the student or a dependent, newest first, each with the class it reached them through,
+ * the student or a dependent, newest first: the recent few, then "Ver material anterior"
+ * for older material a page at a time (#548), each with the class it reached them through,
  * its day, whom it is for when only a dependent (a guardian's "Para León"), and who
  * shared it; tapping one opens its text and links. The database decides what reaches them. A
  * page with none shows no section: most gyms may never share any.
  */
 export function MyMaterial() {
-  const list = useQuery(myMaterialQuery())
+  const list = useInfiniteQuery(myMaterialQuery())
   const titleId = useId()
-  const [all, setAll] = useState(false)
-  // Said politely: the payment and its upload are what the page is for.
-  if (list.isError) return <p className="me-home__note">{copy.error}</p>
-  if (!list.data || list.data.length === 0) return null
-  const shown = all ? list.data : list.data.slice(0, FIRST)
+  // Said politely: the payment and its upload are what the page is for. An older page
+  // that fails keeps what is shown and says so under it.
+  if (list.isError && !list.data) return <p className="me-home__note">{copy.error}</p>
+  const shown = list.data?.pages.flatMap((page) => page.items) ?? []
+  if (shown.length === 0) return null
   return (
     <Section id={titleId} title={copy.title}>
       <Card as="ul" flush className="my-material">
@@ -34,9 +32,10 @@ export function MyMaterial() {
           <MaterialItem key={material.id} material={material} />
         ))}
       </Card>
-      {!all && list.data.length > FIRST && (
-        <Button variant="ghost" onClick={() => setAll(true)}>
-          {copy.more(list.data.length - FIRST)}
+      {list.isFetchNextPageError && <p className="me-home__note">{copy.error}</p>}
+      {list.hasNextPage && (
+        <Button variant="ghost" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+          {copy.older}
         </Button>
       )}
     </Section>
