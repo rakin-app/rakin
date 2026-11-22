@@ -353,7 +353,10 @@ before → after as the admin types, and its button names the fix ("Restaurar ca
 Every one that changes what is owed or paid asks once more (#550, owner decision
 2026-11-22): a second step says what happens, and a "Sí, …" button naming the amount
 ("Sí, anular $45.000") is the only one that saves; "Volver" returns to the form as it
-was. That covers Cambiar monto, Mover vencimiento (its button names the day, the notice
+was. A double tap cannot skip it: each time the step changes, its two buttons wait half a
+second before they take a tap, so the second tap of a double tap on the action does not
+land on "Sí, …", nor one on "Volver" on "Cancelar"; and the first step takes the focus out
+of the field, so a double Enter (a phone keyboard's Go) stops at "Sí, …" too. That covers Cambiar monto, Mover vencimiento (its button names the day, the notice
 the amount), Anular cargo, Restaurar cargo, Revertir ajuste, Devolver, Anular plan and
 Pagado hasta, beside the ones that said what else happens from the start:
 
