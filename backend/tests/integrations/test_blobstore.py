@@ -269,3 +269,36 @@ def test_a_put_holds_to_the_upload_rules(
     with pytest.raises(ValueError):
         asyncio.run(harness.store.put(key, content_type, data))
     assert asyncio.run(harness.store.stat(key)) is None
+
+
+def test_keys_under_lists_every_key_below_a_prefix_and_no_other(harness: Harness) -> None:
+    root = f"t-{uuid.uuid4().hex}"
+    inside = [f"{root}/a/1", f"{root}/a/deep/2", f"{root}/a/3"]
+    for name in [*inside, f"{root}/ab/4", f"{root}/b/5"]:
+        asyncio.run(harness.store.put(name, "image/png", PNG))
+
+    assert asyncio.run(harness.store.keys_under(f"{root}/a/")) == sorted(inside)
+    assert asyncio.run(harness.store.keys_under(f"{root}/none/")) == []
+
+    for name in inside:
+        asyncio.run(harness.store.delete(name))
+    assert asyncio.run(harness.store.keys_under(f"{root}/a/")) == []
+
+
+@pytest.mark.parametrize("bad_prefix", ["a", "", "/", "../a/", "a//"])
+def test_keys_under_refuses_what_is_not_a_prefix(harness: Harness, bad_prefix: str) -> None:
+    with pytest.raises(ValueError):
+        asyncio.run(harness.store.keys_under(bad_prefix))
+
+
+def test_delete_under_removes_every_file_below_a_prefix_and_no_other(harness: Harness) -> None:
+    root = f"t-{uuid.uuid4().hex}"
+    inside = [f"{root}/a/1", f"{root}/a/deep/2"]
+    for name in [*inside, f"{root}/ab/3"]:
+        asyncio.run(harness.store.put(name, "image/png", PNG))
+
+    assert asyncio.run(harness.store.delete_under(f"{root}/a/")) == len(inside)
+
+    assert asyncio.run(harness.store.keys_under(f"{root}/a/")) == []
+    assert asyncio.run(harness.store.keys_under(f"{root}/ab/")) == [f"{root}/ab/3"]
+    assert asyncio.run(harness.store.delete_under(f"{root}/none/")) == 0

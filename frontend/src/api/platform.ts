@@ -157,19 +157,26 @@ export type PlatformGymDetail = {
   // Since when it is suspended (#439), and why; both `null` for an active gym.
   suspended_at: string | null
   suspended_reason: string | null
-  // For a suspended gym, the dates a removal started today would keep; `null` otherwise.
+  // For a suspended gym, the dates its removal keeps, or one started today would;
+  // `null` for an active gym.
   removal: RemovalDates | null
 }
 
 /**
  * The end of service of the Términos de encargo, clause 14 (backend `app.platform.removal`):
- * the days each step takes, and the dates a removal started today would keep.
+ * the days each step takes, and the dates of the removal started on `started_on`, or of one
+ * started today while `started_on` is `null`.
  */
 export type RemovalDates = {
   export_days: number
   deletion_days: number
   backup_days: number
+  started_on: string | null
+  // The day the gym asked in writing for its deletion before its window ended.
+  early_deletion_on: string | null
   export_until: string
+  // The first day its rows and files may be deleted, on the host's shell.
+  deletion_from: string
   deleted_by: string
   backups_gone_by: string
 }
@@ -243,6 +250,32 @@ export function suspendGym(gymId: string, reason: string): Promise<{ changed: bo
 export function resumeGym(gymId: string): Promise<{ changed: boolean }> {
   return apiFetch<{ changed: boolean }>(`/api/platform/gyms/${encodeURIComponent(gymId)}/resume`, {
     method: 'POST',
+  })
+}
+
+const removalPath = (gymId: string) => `/api/platform/gyms/${encodeURIComponent(gymId)}/removal`
+
+/**
+ * Starts the suspended gym's removal (#377), its slug typed again; nothing is deleted yet.
+ * A 409 `not_suspended` or `slug_mismatch` refuses it; a stale session is a 401 `reauth`.
+ */
+export function startRemoval(gymId: string, slug: string): Promise<{ changed: boolean }> {
+  return apiFetch<{ changed: boolean }>(removalPath(gymId), { method: 'POST', body: JSON.stringify({ slug }) })
+}
+
+/** Cancels the gym's removal: it stays suspended. A stale session is a 401 `reauth`. */
+export function cancelRemoval(gymId: string): Promise<{ changed: boolean }> {
+  return apiFetch<{ changed: boolean }>(removalPath(gymId), { method: 'DELETE' })
+}
+
+/**
+ * Records the day the gym asked in writing for its deletion before its window ends; a day
+ * to come is a 422 `early_deletion_future`. A stale session is a 401 `reauth`.
+ */
+export function recordEarlyDeletion(gymId: string, askedOn: string): Promise<{ changed: boolean }> {
+  return apiFetch<{ changed: boolean }>(`${removalPath(gymId)}/early`, {
+    method: 'POST',
+    body: JSON.stringify({ asked_on: askedOn }),
   })
 }
 

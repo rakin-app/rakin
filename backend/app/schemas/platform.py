@@ -148,12 +148,19 @@ class SlugAlias(BaseModel):
 
 
 class RemovalDates(BaseModel):
-    """The end of service of the Términos de encargo, clause 14 (`app.platform.removal`)."""
+    """The end of service of the Términos de encargo, clause 14 (`app.platform.removal`):
+    of the removal started on `started_on`, or of one started today when it is None."""
 
     export_days: int
     deletion_days: int
     backup_days: int
+    # The day the removal started; None while none has.
+    started_on: date | None
+    # The day the gym asked in writing for its deletion before its window ended.
+    early_deletion_on: date | None
     export_until: date
+    # The first day its rows and files may be deleted (`python -m app.gyms delete`).
+    deletion_from: date
     deleted_by: date
     backups_gone_by: date
 
@@ -180,7 +187,7 @@ class PlatformGymDetail(BaseModel):
     # Since when it is suspended (#439), and why; both None for an active gym.
     suspended_at: datetime | None
     suspended_reason: str | None
-    # For a suspended gym, the dates a removal started today would keep
+    # For a suspended gym, the dates its removal keeps, or one started today would
     # (`app.platform.removal`); None for an active one, which cannot be removed.
     removal: RemovalDates | None
 
@@ -246,6 +253,22 @@ class Suspension(BaseModel):
 class Suspended(BaseModel):
     # False when the gym was so already: nothing changed, and nothing was logged.
     changed: bool
+
+
+class RemovalStart(BaseModel):
+    """The gym's slug, typed again, to start its removal (#377)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str
+
+
+class EarlyDeletion(BaseModel):
+    """The day the gym asked in writing for its deletion before its window ends."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asked_on: date
 
 
 class ReauthCode(BaseModel):

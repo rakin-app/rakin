@@ -2,17 +2,20 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useId, useRef, useState, type FormEvent } from 'react'
 import {
+  cancelRemoval,
   editGym,
   isHandover,
   needsReauth,
   PLATFORM_PATH,
   platformGymQuery,
   platformGymsQuery,
+  recordEarlyDeletion,
   recordTerms,
   resendOwnerLink,
   renameCheckQuery,
   renameGym,
   resumeGym,
+  startRemoval,
   suspendGym,
   type GymEdit,
   type PlatformGymDetail,
@@ -47,7 +50,7 @@ const REFUSALS = { range: {}, value: copy.refusals as Record<string, string> }
  * changed here, and their email only before their first sign-in: after it, that is the
  * handover (#321). A new address asks the operator to confirm by typing it, and, if
  * they have not proved who they are in the last 10 minutes, for a code. So do suspending
- * and resuming the gym (#439), each after a confirm; removing one is only explained.
+ * and resuming the gym (#439), each after a confirm, and removing a suspended one (#377).
  */
 export function PlatformGym() {
   const { gymId } = route.useParams()
@@ -428,33 +431,69 @@ function Address({ gym }: { gym: PlatformGymDetail }) {
   )
 }
 
-type Dialog = 'suspend' | 'resume' | 'remove' | null
+type Action = 'suspend' | 'resume' | 'remove' | 'cancelRemoval' | 'early'
+type Dialog = Action | null
+
+const DONE: Record<Action, string> = {
+  suspend: copy.suspendedDone,
+  resume: copy.resumedDone,
+  remove: copy.removeStarted,
+  cancelRemoval: copy.removalCancelled,
+  early: copy.earlyRecorded,
+}
+const FAILED: Record<Action, string> = {
+  suspend: copy.suspendFailed,
+  resume: copy.resumeFailed,
+  remove: copy.removeStartFailed,
+  cancelRemoval: copy.cancelRemovalFailed,
+  early: copy.earlyFailed,
+}
 
 /**
- * Suspending and resuming the gym (#439), each confirmed, and on a suspended gym what
- * removing it would take: the end of service of the Términos de encargo, with the dates a
- * removal started today would keep. Removing is not available yet (#377), so that dialog
- * only explains, and never asks the API.
+ * Suspending and resuming the gym (#439), each confirmed, and removing a suspended one
+ * (#377): the end of service of the Términos de encargo, never at once. Its dialog shows
+ * the dates a removal started today would keep and asks for the slug typed again; once
+ * started, the gym stays suspended and the card shows its dates, a pedido de borrado
+ * anticipado to record and the cancel. Its rows and files are deleted on the host's shell.
  */
 function Suspension({ gym }: { gym: PlatformGymDetail }) {
   const refresh = useRefresh(gym.id)
   const [reason, setReason] = useState('')
+  const [typed, setTyped] = useState('')
+  const [askedOn, setAskedOn] = useState('')
   const [dialog, setDialog] = useState<Dialog>(null)
   const [reauthing, setReauthing] = useState(false)
   const [missing, setMissing] = useState(false)
   const dialogId = useId()
   const host = new URL(gym.address).host
   const suspended = gym.suspended_at !== null
+  const removal = gym.removal
+  const removing = removal !== null && removal.started_on !== null
 
   const change = useSubmit({
     offline: 'refuse',
-    mutationFn: (to: 'suspend' | 'resume') => (to === 'suspend' ? suspendGym(gym.id, reason.trim()) : resumeGym(gym.id)),
+    mutationFn: (action: Action) => {
+      switch (action) {
+        case 'suspend':
+          return suspendGym(gym.id, reason.trim())
+        case 'resume':
+          return resumeGym(gym.id)
+        case 'remove':
+          return startRemoval(gym.id, typed)
+        case 'cancelRemoval':
+          return cancelRemoval(gym.id)
+        case 'early':
+          return recordEarlyDeletion(gym.id, askedOn)
+      }
+    },
     onError: (error) => {
       if (needsReauth(error)) setReauthing(true)
     },
     onSuccess: () => {
       setDialog(null)
       setReason('')
+      setTyped('')
+      setAskedOn('')
       return refresh()
     },
   })
@@ -467,6 +506,7 @@ function Suspension({ gym }: { gym: PlatformGymDetail }) {
   const close = () => {
     setDialog(null)
     setReauthing(false)
+    setTyped('')
     change.reset()
   }
   const askToSuspend = (event: FormEvent) => {
@@ -478,15 +518,35 @@ function Suspension({ gym }: { gym: PlatformGymDetail }) {
     setMissing(false)
     open('suspend')
   }
+  const askToRemove = (event: FormEvent) => {
+    event.preventDefault()
+    if (typed === gym.slug) change.mutate('remove')
+  }
+  const recordEarly = (event: FormEvent) => {
+    event.preventDefault()
+    change.reset()
+    setReauthing(false)
+    setDialog('early')
+    change.mutate('early')
+  }
 
-  const done = change.isSuccess
-    ? change.data.changed
-      ? change.variables === 'suspend'
-        ? copy.suspendedDone
-        : copy.resumedDone
-      : copy.alreadySo
-    : null
-  const failed = change.isError && !needsReauth(change.error)
+  const done = change.isSuccess ? (change.data.changed ? DONE[change.variables] : copy.alreadySo) : null
+  const errors = validationErrors(change.error)
+  const earlyError =
+    change.variables === 'early' && 'asked_on' in errors
+      ? refusal(errors.asked_on!, 'asked_on', REFUSALS, askedOn === '')
+      : undefined
+  const failed =
+    change.isError && !needsReauth(change.error) && earlyError === undefined ? FAILED[change.variables!] : null
+  const reauth = (action: Action) => (
+    <PlatformReauth
+      onFresh={() => {
+        setReauthing(false)
+        change.mutate(action)
+      }}
+      onCancel={close}
+    />
+  )
 
   return (
     <Section id={useId()} title={copy.suspension}>
@@ -504,13 +564,57 @@ function Suspension({ gym }: { gym: PlatformGymDetail }) {
         )}
         <p className="platform-gym__note">{copy.suspendEffects}</p>
         {done && <Banner tone="done">{done}</Banner>}
-        {suspended ? (
-          dialog === null && (
-            <div className="platform-gym__actions">
-              <Button onClick={() => open('remove')}>{copy.remove}</Button>
-              <Button variant="primary" onClick={() => open('resume')}>
-                {copy.resume}
+        {removing && (
+          <section aria-labelledby={`${dialogId}-removal`} className="platform-gym__removal">
+            <h3 id={`${dialogId}-removal`} className="section-header__title">
+              {copy.removalScheduled}
+            </h3>
+            <PlainList className="platform-gym__list">
+              <li>{copy.removalStartedOn(shortDate(removal.started_on!))}</li>
+              <li>{copy.removalExportUntil(shortDate(removal.export_until))}</li>
+              {removal.early_deletion_on && <li>{copy.removalEarly(shortDate(removal.early_deletion_on))}</li>}
+              <li>{copy.removalDeletion(shortDate(removal.deletion_from), shortDate(removal.deleted_by))}</li>
+              <li>{copy.removalBackups(shortDate(removal.backups_gone_by))}</li>
+            </PlainList>
+            <p className="platform-gym__note">{copy.removalHowTo}</p>
+            <PlainList className="platform-gym__list">
+              {copy.removalCommands(gym.slug).map((line) => (
+                <li key={line}>
+                  <code>{line}</code>
+                </li>
+              ))}
+            </PlainList>
+            <form className="platform-gym__inline" onSubmit={recordEarly} noValidate>
+              <Field label={copy.earlyLabel} hint={copy.earlyHint} error={earlyError}>
+                {(props) => (
+                  <Input {...props} type="date" value={askedOn} onChange={(e) => setAskedOn(e.target.value)} />
+                )}
+              </Field>
+              <Button
+                type="submit"
+                disabled={askedOn === '' || (change.isPending && change.variables === 'early')}
+                busy={change.isPending && change.variables === 'early'}
+              >
+                {change.isPending && change.variables === 'early' ? copy.earlyRecording : copy.earlyRecord}
               </Button>
+            </form>
+            {dialog === 'early' && reauthing && reauth('early')}
+            {dialog === 'early' && failed && <Banner tone="error">{failed}</Banner>}
+          </section>
+        )}
+        {suspended ? (
+          (dialog === null || dialog === 'early') && (
+            <div className="platform-gym__actions">
+              {removing ? (
+                <Button onClick={() => open('cancelRemoval')}>{copy.cancelRemoval}</Button>
+              ) : (
+                <>
+                  <Button onClick={() => open('remove')}>{copy.remove}</Button>
+                  <Button variant="primary" onClick={() => open('resume')}>
+                    {copy.resume}
+                  </Button>
+                </>
+              )}
             </div>
           )
         ) : (
@@ -532,25 +636,27 @@ function Suspension({ gym }: { gym: PlatformGymDetail }) {
           </form>
         )}
         {!suspended && <p className="platform-gym__note">{copy.removeHint}</p>}
-        {(dialog === 'suspend' || dialog === 'resume') && (
+        {(dialog === 'suspend' || dialog === 'resume' || dialog === 'cancelRemoval') && (
           <section role="dialog" aria-labelledby={dialogId} className="platform-gym__confirm">
             <h3 id={dialogId} className="section-header__title">
-              {dialog === 'suspend' ? copy.confirmSuspendTitle : copy.confirmResumeTitle}
+              {dialog === 'suspend'
+                ? copy.confirmSuspendTitle
+                : dialog === 'resume'
+                  ? copy.confirmResumeTitle
+                  : copy.cancelRemovalTitle}
             </h3>
-            <p>{dialog === 'suspend' ? copy.confirmSuspend(host) : copy.confirmResume}</p>
+            <p>
+              {dialog === 'suspend'
+                ? copy.confirmSuspend(host)
+                : dialog === 'resume'
+                  ? copy.confirmResume
+                  : copy.confirmCancelRemoval}
+            </p>
             {reauthing ? (
-              <PlatformReauth
-                onFresh={() => {
-                  setReauthing(false)
-                  change.mutate(dialog)
-                }}
-                onCancel={close}
-              />
+              reauth(dialog)
             ) : (
               <>
-                {failed && (
-                  <Banner tone="error">{dialog === 'suspend' ? copy.suspendFailed : copy.resumeFailed}</Banner>
-                )}
+                {failed && <Banner tone="error">{failed}</Banner>}
                 <div className="platform-gym__actions">
                   <Button onClick={close}>{copy.cancel}</Button>
                   <Button
@@ -563,30 +669,62 @@ function Suspension({ gym }: { gym: PlatformGymDetail }) {
                       ? change.isPending
                         ? copy.suspending
                         : copy.suspend
-                      : change.isPending
-                        ? copy.resuming
-                        : copy.resume}
+                      : dialog === 'resume'
+                        ? change.isPending
+                          ? copy.resuming
+                          : copy.resume
+                        : change.isPending
+                          ? copy.cancellingRemoval
+                          : copy.cancelRemoval}
                   </Button>
                 </div>
               </>
             )}
           </section>
         )}
-        {dialog === 'remove' && gym.removal && (
+        {dialog === 'remove' && removal && (
           <section role="dialog" aria-labelledby={dialogId} className="platform-gym__confirm">
             <h3 id={dialogId} className="section-header__title">
               {copy.removeTitle}
             </h3>
             <p>{copy.removeIntro}</p>
             <PlainList className="platform-gym__list">
-              <li>{copy.removeExport(gym.removal.export_days, shortDate(gym.removal.export_until))}</li>
-              <li>{copy.removeDelete(gym.removal.deletion_days, shortDate(gym.removal.deleted_by))}</li>
-              <li>{copy.removeBackups(gym.removal.backup_days, shortDate(gym.removal.backups_gone_by))}</li>
+              <li>{copy.removeExport(removal.export_days, shortDate(removal.export_until))}</li>
+              <li>{copy.removeDelete(removal.deletion_days, shortDate(removal.deleted_by))}</li>
+              <li>{copy.removeBackups(removal.backup_days, shortDate(removal.backups_gone_by))}</li>
             </PlainList>
-            <Banner tone="warning">{copy.removeUnavailable}</Banner>
-            <div className="platform-gym__actions">
-              <Button onClick={close}>{copy.close}</Button>
-            </div>
+            <p>{copy.removeStays}</p>
+            {reauthing ? (
+              reauth('remove')
+            ) : (
+              <form className="platform-gym__inline" onSubmit={askToRemove} noValidate>
+                <Field label={copy.removeType(gym.slug)}>
+                  {(props) => (
+                    <Input
+                      {...props}
+                      type="text"
+                      autoComplete="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      value={typed}
+                      onChange={(e) => setTyped(e.target.value.trim().toLowerCase())}
+                    />
+                  )}
+                </Field>
+                {failed && <Banner tone="error">{failed}</Banner>}
+                <div className="platform-gym__actions">
+                  <Button onClick={close}>{copy.cancel}</Button>
+                  <Button
+                    type="submit"
+                    variant="danger"
+                    disabled={typed !== gym.slug || change.isPending}
+                    busy={change.isPending}
+                  >
+                    {change.isPending ? copy.removeStarting : copy.removeStart}
+                  </Button>
+                </div>
+              </form>
+            )}
           </section>
         )}
       </div>

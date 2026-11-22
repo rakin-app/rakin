@@ -169,18 +169,18 @@ None of these needs it to be mandatory. Keep it optional, and make the export co
 
 ## 4. Offboarding
 
-**Missing.** When a gym cancels, nothing happens:
+**Done in #377.** The end of service follows the Términos de encargo, clause 14, on a schedule the panel keeps (`backend/app/platform/removal.py`, `docs/deploy.md`, "Removing a gym"):
 
-- There is no command to export a gym's data (#63 is open) and none to delete a gym. `app.gyms` only creates (`backend/app/gyms.py`).
-- Its rows, its proofs under `proofs/<gym_id>/` and its people's `person` rows stay forever.
-- `forget_gym_person` cannot be used in bulk: it refuses every member who paid.
+- `python -m app.gyms export <slug>` hands the gym everything it holds: every row with its id as JSON, its people's `person` rows, and its files (`backend/app/offboarding.py`).
+- The panel starts the removal of a suspended gym and shows its dates. Deletion waits 30 days for the export unless the gym asks in writing for it sooner, which the operator records.
+- `python -m app.gyms delete <slug> --confirm <slug>` deletes its files under `proofs/`, `receipts/` and `logos/`, then every row with its id, append-only tables included, and each of its people no other gym knows (migration 0094's `delete_gym`). Who ran it, and what went, is a `gym_deleted` row of `platform_event`, by the gym's slug and id only.
 
 **Backups.** Retention keeps the newest dump of each of the 14 most recent days that have one, and of the 8 most recent Sundays (`backend/app/backup.py:61-62`, `:163-172`; `backend/tests/test_backup.py:76`). Data deleted today survives in backups for **up to about 8 weeks** (the eighth Sunday back, 50 to 56 days). Two things stretch that:
 
 - Retention counts dumps, not days. If backups stop, the last ones are kept until they start again.
 - `deploy.md` asks for object versioning on the proofs bucket "where the provider offers it". If it is on, a deleted proof stays as an old version until a lifecycle rule removes it. The same holds for the backups bucket.
 
-Gap: #377.
+So the gym is in no backup about 8 weeks after its deletion; the Términos de encargo promise 60 days, and the panel shows the date.
 
 ## 5. Gaps the table does not cover
 
@@ -262,7 +262,7 @@ Gap: #375.
 | Logs that can scope an incident: gym, person and IP on requests; reads and exports recorded; kept long enough | before paid launch | #374 |
 | A member's request that reaches the company by email | before paid launch | #375 |
 | Sensitive fields: explicit consent and the per-gym off switch | before paid launch | #376 |
-| Gym offboarding: export, deletion of rows and files, backups ageing out | before paid launch | #377 |
+| Gym offboarding: export, deletion of rows and files, backups ageing out (done) | before paid launch | #377 |
 | Retention jobs, and a retention promise the notice and `technical.md` agree on | later (the first proof turns 12 months old in late 2027) | #378 |
 
 Existing issues linked rather than duplicated: #69 (the epic), #63 (gym export, part of #377), #182 (merging people across gyms, which #372's anonymisation must respect), ops#2 (restore rehearsal), #309 (RLS by permission, the place for member-scope policies).

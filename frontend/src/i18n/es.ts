@@ -5122,6 +5122,7 @@ export const es = {
         owner_email: 'Revisa el correo: no parece una dirección válida.',
         owner_phone: 'Revisa el teléfono.',
         signed_on_future: 'La fecha no puede ser futura.',
+        early_deletion_future: 'La fecha no puede ser futura.',
         signed_on_early: 'La fecha es anterior a esta versión de los términos.',
         date_type: 'Obligatorio.',
         date_from_datetime_parsing: 'Escribe una fecha.',
@@ -5204,15 +5205,45 @@ export const es = {
       removeHint: 'Solo un gimnasio suspendido se puede eliminar.',
       removeTitle: 'Eliminar el gimnasio',
       // The end of service of the Términos de encargo, clause 14; the numbers come from the API.
-      removeIntro: 'Eliminar sigue los Términos de encargo (cláusula 14, «Al terminar»): nunca se borra de inmediato. Si empezara hoy:',
+      removeIntro: 'Eliminar sigue los Términos de encargo (cláusula 14, «Al terminar»): nunca se borra de inmediato. Si empieza hoy:',
       removeExport: (days: number, date: string) =>
-        `Primero, ${days} días para que el gimnasio pida una copia completa de sus datos y archivos, hasta el ${date}. Mientras no exista esa copia, se le entrega la exportación del libro de pagos.`,
+        `Primero, ${days} días para que el gimnasio pida una copia completa de sus datos y archivos, hasta el ${date}.`,
       removeDelete: (days: number, date: string) =>
         `Después, sus datos y archivos se borran dentro de ${days} días, a más tardar el ${date}. Antes, solo si el gimnasio lo pide por escrito.`,
       removeBackups: (days: number, date: string) =>
         `Las copias de respaldo se renuevan dentro de ${days} días más: desde el ${date} ninguna lo contiene.`,
-      removeUnavailable: 'Todavía no está disponible: falta definir cómo se borran los datos de un gimnasio.',
-      close: 'Cerrar',
+      removeStays: 'Mientras tanto sigue suspendido, y puedes cancelar la eliminación hasta que se borre.',
+      removeType: (slug: string) => `Para confirmar, escribe su dirección: ${slug}`,
+      removeStart: 'Programar la eliminación',
+      removeStarting: 'Programando…',
+      removeStartFailed: 'No pudimos programar la eliminación. Inténtalo de nuevo.',
+      removeStarted: 'Eliminación programada.',
+      // While a removal is under way (#377).
+      removalScheduled: 'Eliminación programada',
+      removalStartedOn: (date: string) => `Programada el ${date}.`,
+      removalExportUntil: (date: string) => `Puede pedir la copia de sus datos y archivos hasta el ${date}.`,
+      removalDeletion: (from: string, by: string) =>
+        `Sus datos y archivos se borran desde el ${from}, a más tardar el ${by}.`,
+      removalBackups: (date: string) => `Desde el ${date}, ninguna copia de respaldo lo contiene.`,
+      removalEarly: (date: string) => `Pidió por escrito que se borre antes: lo pidió el ${date}.`,
+      removalHowTo: 'La copia y el borrado se hacen desde el servidor:',
+      removalCommands: (slug: string) => [
+        `python -m app.gyms export ${slug}`,
+        `python -m app.gyms delete ${slug} --confirm ${slug}`,
+      ],
+      earlyLabel: 'Pidió por escrito borrar antes',
+      earlyHint: 'La fecha de su pedido. Queda registrada, y el borrado puede hacerse desde ese día.',
+      earlyRecord: 'Registrar el pedido',
+      earlyRecording: 'Registrando…',
+      earlyRecorded: 'Pedido registrado.',
+      earlyFailed: 'No pudimos registrar el pedido. Inténtalo de nuevo.',
+      earlyRequired: 'Escribe la fecha del pedido.',
+      cancelRemoval: 'Cancelar la eliminación',
+      cancelRemovalTitle: 'Cancelar la eliminación',
+      confirmCancelRemoval: 'No se borra nada: el gimnasio sigue suspendido, como antes, y después puedes reanudarlo.',
+      cancellingRemoval: 'Cancelando…',
+      removalCancelled: 'Eliminación cancelada: el gimnasio sigue suspendido.',
+      cancelRemovalFailed: 'No pudimos cancelar la eliminación. Inténtalo de nuevo.',
     },
     // Asked before an action that needs a recent proof of who is signed in (#438).
     reauth: {

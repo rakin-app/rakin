@@ -1,5 +1,5 @@
 """An operator suspends a gym from the panel and resumes it (#439); removing one is
-refused until #377.
+`test_gym_removal`'s.
 
 While a gym is suspended its host shows a notice, nobody gets a link into it, a live
 session there stops, and its data stays. The app runs as in production, a base domain
@@ -45,7 +45,9 @@ def _terms_signed_today(monkeypatch: pytest.MonkeyPatch) -> None:
 NEW_ROUTES = (
     ("POST", f"/api/platform/gyms/{uuid.uuid4()}/suspend"),
     ("POST", f"/api/platform/gyms/{uuid.uuid4()}/resume"),
-    ("DELETE", f"/api/platform/gyms/{uuid.uuid4()}"),
+    ("POST", f"/api/platform/gyms/{uuid.uuid4()}/removal"),
+    ("DELETE", f"/api/platform/gyms/{uuid.uuid4()}/removal"),
+    ("POST", f"/api/platform/gyms/{uuid.uuid4()}/removal/early"),
 )
 
 
@@ -206,6 +208,7 @@ def test_the_list_and_the_gym_say_it_is_suspended_since_when_and_why(panel: Pane
         assert detail["suspended_reason"] == "Pidió una pausa"
         assert detail["suspended_at"] == listed["suspended_at"]
         # The dates a removal started today would keep, by the terms' numbers.
+        assert detail["removal"]["started_on"] is None
         assert detail["removal"]["export_days"] == removal.EXPORT_DAYS
         assert detail["removal"]["deletion_days"] == removal.DELETION_DAYS
         assert detail["removal"]["backup_days"] == removal.BACKUP_DAYS
@@ -319,26 +322,10 @@ def test_a_reason_is_required_and_an_unknown_gym_is_a_404(panel: Panel) -> None:
             assert response.status_code == 422, body
         assert suspend(client, uuid.uuid4()).status_code == 404
         assert resume(client, uuid.uuid4()).status_code == 404
-        assert client.delete(f"/api/platform/gyms/{uuid.uuid4()}").status_code == 404
-
-
-# --- removing --------------------------------------------------------------------------
-
-
-def test_removing_is_refused_and_deletes_nothing(panel: Panel) -> None:
-    _, signing_in = signed_in(panel)
-    with signing_in as client:
-        gym_id = create(client, new_slug())
-        before = gym_rows(panel, gym_id)
-        refused = client.delete(f"/api/platform/gyms/{gym_id}")
-        assert refused.status_code == 409
-        assert refused.json() == {"detail": {"code": "not_suspended"}}
-
-        assert suspend(client, gym_id).status_code == 200
-        refused = client.delete(f"/api/platform/gyms/{gym_id}")
-        assert refused.status_code == 409
-        assert refused.json() == {"detail": {"code": "removal_unavailable", "issue": 377}}
-    assert gym_rows(panel, gym_id) == before
+        missing = f"/api/platform/gyms/{uuid.uuid4()}/removal"
+        assert client.post(missing, json={"slug": "x"}).status_code == 404
+        assert client.delete(missing).status_code == 404
+        assert client.post(f"{missing}/early", json={"asked_on": "2026-01-01"}).status_code == 404
 
 
 # --- nobody else -----------------------------------------------------------------------

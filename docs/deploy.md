@@ -339,8 +339,6 @@ What suspension does (migration 0079):
 
 What resuming does: its people sign in again, and on the next nightly run the `catch_up` job runs `freezes`, `billing_periods` and `lapse` for it on each day it missed, in order, before any other job takes it back. Its ledger then holds what it would have held had it never been suspended: the periods that fell due are billed, a plan that would have lapsed in the suspension lapses on that day and is not billed after it, and a freeze booked into it starts and ends on its own dates. The statements and overdue emails of those days are never sent; from the run date on, they go out as for any gym. Classes are made from the run date on. A payment recorded during the suspension counts on the days before it too, so it can save a plan from lapsing.
 
-**Removing a gym** is offered only for a suspended one, and is not possible yet: the panel's **Eliminar** explains the end of service of the Términos de encargo (clause 14), with the dates a removal started today would keep, and `DELETE /api/platform/gyms/{id}` answers `409 removal_unavailable` (`not_suspended` for an active gym). Nothing is deleted until #377 defines how. The schedule, whose numbers live in [`app/platform/removal.py`](../backend/app/platform/removal.py): 30 days for the gym to ask for a full copy of its data and files (deletion does not start sooner unless it asks for it in writing), its rows and files deleted within 30 days after that, and its backups gone within 60 days after the deletion.
-
 To see which gyms are suspended, and which the jobs still owe days:
 
 ```sh
@@ -350,9 +348,30 @@ WHERE suspended_at IS NOT NULL OR jobs_owed_since IS NOT NULL ORDER BY slug;
 SQL
 ```
 
+## Removing a gym
+
+A gym is removed (#377) on the schedule of the Términos de encargo, clause 14 ("Al terminar"), never at once. Its numbers live in [`app/platform/removal.py`](../backend/app/platform/removal.py), and the panel shows each date:
+
+1. **Start it**, from the gym's screen, section **Suspensión**, on a suspended gym only: **Eliminar** shows the dates a removal started today keeps, and asks for the gym's slug typed again and a session proved in the last 10 minutes. The gym stays suspended and the card says **Eliminación programada**, with its dates. It is not resumed while its removal lasts (`409 removal_started`).
+2. **Export window, 30 days.** The gym may ask for a full copy of its data and files, which is `export` below. Deletion does not start before the window ends, unless the gym asks in writing for it sooner: record the date it asked in the same card (**Pidió por escrito borrar antes**), and deletion may run from that day.
+3. **Deletion, within 30 days after the window**: `delete` below, on the host.
+4. **Backups** age out within 60 days after the deletion. Retention keeps about 8 weeks ([Backups](#backups)): the gym is in no backup after the date `delete` prints, which the card showed as its latest. Retention counts dumps, not days, so this holds while backups run; and where the files' bucket keeps object versions, a lifecycle rule must expire old versions within the same 60 days.
+5. Until the deletion runs, **Cancelar la eliminación** puts it back as it was, suspended.
+
+Each step is a row of `platform_event` naming the gym by its slug: `gym_removal_started`, `gym_early_deletion` (`{slug, asked_on}`), `gym_removal_cancelled`, and `gym_deleted`. A step that changes nothing logs nothing.
+
+```sh
+# The copy for the gym: its rows as JSON (data/<table>.json), its files (files/<key>), a manifest.json
+docker compose run --rm -v /root/exports:/exports api python -m app.gyms export <slug> --to /exports
+# Once the window is over, or from the day it asked in writing
+docker compose run --rm api python -m app.gyms delete <slug> --confirm <slug> --by <your name>
+```
+
+`export` reads the gym in one snapshot and writes a new directory `<slug>-<UTC time>` readable by root alone: it holds every member's data, so hand it to the gym over a channel you would send a password through, then delete it from the host. Sensitive custom fields are opened with `FIELD_ENCRYPTION_KEY`, so run it with the api's `.env`. Sign-in sessions and idempotency keys are left out, as the app's machinery rather than the gym's data. `delete` refuses a gym with no removal started, and one whose window is still open, saying from which day it may run. It deletes the gym's files (`proofs/`, `receipts/` and `logos/` under its id), then, in one transaction, every row with the gym's id, the gym itself, and each of its people no other gym knows, with their sign-in links; a person another gym also has stays, with that gym's record of them. It prints what it deleted, and logs it as `gym_deleted` with `{slug, by, host_user, rows, tables, files, people_deleted, people_kept}`: nothing about any person. It holds the gym's row locked from its check to the last row, so a **Cancelar la eliminación** clicked meanwhile waits for it and then finds nothing to cancel. A failure after the files leaves the rows, and running it again finishes. `platform_event` keeps the gym's id and slug, as the platform's record of what it did.
+
 ## Platform operators
 
-The panel at `https://<base host>/plataforma` (#436) lists every gym Rakin hosts, for the people who run them, creates new ones ([Creating a gym](#creating-a-gym), #437), edits them ([Editing a gym](#editing-a-gym), #438) and suspends them ([Suspending a gym](#suspending-a-gym), #439). Who may sign in there is granted on the host, never from a screen:
+The panel at `https://<base host>/plataforma` (#436) lists every gym Rakin hosts, for the people who run them, creates new ones ([Creating a gym](#creating-a-gym), #437), edits them ([Editing a gym](#editing-a-gym), #438), suspends them ([Suspending a gym](#suspending-a-gym), #439) and removes them ([Removing a gym](#removing-a-gym), #377). Who may sign in there is granted on the host, never from a screen:
 
 ```sh
 cd /srv/rakin

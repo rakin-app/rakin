@@ -29,14 +29,22 @@ terms state (`terms_state` in 0081, as `app_terms_state` reads it) and refuse a
 A gym is suspended and resumed (#439) through 0079's `platform_suspend_gym` and
 `platform_resume_gym`, with a fresh session too. While it is suspended its host shows
 only a notice, nobody signs in there, a live session there stops, and the nightly jobs
-leave it out; its data stays. Removing one is offered only for a suspended gym, and
-refused until #377 defines how a gym is deleted (`app.platform.removal`).
+leave it out; its data stays.
+
+A suspended gym is removed (#377) on the schedule of the Términos de encargo, clause 14
+(`app.platform.removal`), never at once, through 0094's functions, each with a fresh
+session too: `POST …/removal` starts it, with the slug typed again; while it lasts the
+gym stays suspended, cannot be resumed (`409 removal_started`), and the screen shows
+its dates. `POST …/removal/early` records the day the gym asked in writing for an
+earlier deletion, and `DELETE …/removal` cancels it, back to suspended. Its rows and
+files are deleted on the host's shell (`python -m app.gyms delete`, `app.offboarding`),
+never from here.
 """
 
 import logging
 import math
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Literal
 
 from fastapi import (
@@ -65,6 +73,7 @@ from app.platform.web import OperatorLinks
 from app.schemas.gym import TIMEZONES
 from app.schemas.platform import (
     CreatedGym,
+    EarlyDeletion,
     GymEdit,
     GymEdited,
     NewGymChoices,
@@ -77,6 +86,7 @@ from app.schemas.platform import (
     PresetOption,
     ReauthCode,
     RemovalDates,
+    RemovalStart,
     Renamed,
     SlugAlias,
     SlugCheck,
@@ -323,18 +333,29 @@ async def gym_detail(
         suspended_reason=row.suspended_reason,
         removal=None
         if row.suspended_at is None
-        else removal_dates(gym_today(request.app.state.settings.jobs_timezone)),
+        else removal_dates(
+            request.app.state.settings.jobs_timezone,
+            row.removal_started_at,
+            row.early_deletion_on,
+        ),
     )
 
 
-def removal_dates(today: date) -> RemovalDates:
-    """The dates a removal started `today` would keep, with the numbers they follow."""
-    dates = removal.schedule(today)
+def removal_dates(
+    timezone: str, started_at: datetime | None, early_deletion_on: date | None
+) -> RemovalDates:
+    """The dates the removal started at `started_at` keeps, or one started today would,
+    with the numbers they follow."""
+    started = None if started_at is None else removal.started_on(started_at, timezone)
+    dates = removal.schedule(started or gym_today(timezone))
     return RemovalDates(
         export_days=removal.EXPORT_DAYS,
         deletion_days=removal.DELETION_DAYS,
         backup_days=removal.BACKUP_DAYS,
+        started_on=started,
+        early_deletion_on=early_deletion_on,
         export_until=dates.export_until,
+        deletion_from=removal.deletion_opens(started or gym_today(timezone), early_deletion_on),
         deleted_by=dates.deleted_by,
         backups_gone_by=dates.backups_gone_by,
     )
@@ -460,25 +481,28 @@ async def rename_gym(
 # --- suspending, resuming and removing a gym (#439) ------------------------------------
 
 
-async def change_suspension(
-    request: Request, operator: Operator, sql: str, params: dict[str, object]
-) -> Suspended:
-    """Suspend or resume through `sql`, with a fresh session; its host shows it at once."""
+async def fresh_call(operator: Operator, sql: str, params: dict[str, object]) -> Any:
+    """`sql`'s one row, through a function that asks for a session proved recently;
+    404 when it returns none."""
     require_fresh(operator)
     try:
         row = (
-            await operator.db.execute(
-                text(sql),
-                {"h": operator.session_hash, **params},
-            )
+            await operator.db.execute(text(sql), {"h": operator.session_hash, **params})
         ).one_or_none()
     except DBAPIError as error:
-        # Proved in time to the API's clock, not to the database's.
         if not_fresh(error):
             raise REAUTH from None
         raise
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such gym")
+    return row
+
+
+async def change_suspension(
+    request: Request, operator: Operator, sql: str, params: dict[str, object]
+) -> Suspended:
+    """Suspend or resume through `sql`, with a fresh session; its host shows it at once."""
+    row = await fresh_call(operator, sql, params)
     lookup: GymLookup = request.app.state.gym_lookup
     lookup.forget(row.slug)
     return Suspended(changed=row.changed)
@@ -503,37 +527,75 @@ async def suspend_gym(
 async def resume_gym(gym_id: uuid.UUID, operator: OperatorSession, request: Request) -> Suspended:
     """Resume the gym, with a session proved in the last 10 minutes: its people sign in
     again, and the next nightly run catches up the days it missed (`app.jobs.catch_up`).
-    An active gym stays as it is."""
-    return await change_suspension(
-        request,
+    An active gym stays as it is; one being removed is refused, `removal_started`."""
+    row = await fresh_call(
         operator,
-        "SELECT slug, changed FROM platform_resume_gym(:h, :g)",
+        "SELECT slug, changed, removal_started FROM platform_resume_gym(:h, :g)",
         {"g": gym_id},
     )
+    if row.removal_started:
+        raise HTTPException(status.HTTP_409_CONFLICT, {"code": "removal_started"})
+    lookup: GymLookup = request.app.state.gym_lookup
+    lookup.forget(row.slug)
+    return Suspended(changed=row.changed)
 
 
-@router.delete(
-    "/gyms/{gym_id}",
-    status_code=status.HTTP_409_CONFLICT,
-    responses={status.HTTP_409_CONFLICT: {"description": "Not suspended, or not yet possible"}},
+@router.post(
+    "/gyms/{gym_id}/removal",
+    responses={status.HTTP_409_CONFLICT: {"description": "Not suspended, or not its slug"}},
 )
-async def remove_gym(gym_id: uuid.UUID, operator: OperatorSession) -> Response:
-    """Refused, always, and nothing is deleted: `not_suspended` for an active gym, and
-    `removal_unavailable` for a suspended one until #377 defines how a gym is deleted."""
-    row = (
-        await operator.db.execute(
-            text("SELECT suspended_at FROM platform_gym(:h, :g, :service, :terms)"),
-            {"h": operator.session_hash, "g": gym_id, **CURRENT},
-        )
-    ).one_or_none()
-    if row is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such gym")
-    if row.suspended_at is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, {"code": "not_suspended"})
-    raise HTTPException(
-        status.HTTP_409_CONFLICT,
-        {"code": "removal_unavailable", "issue": removal.DELETION_ISSUE},
+async def start_removal(
+    gym_id: uuid.UUID, body: RemovalStart, operator: OperatorSession
+) -> Suspended:
+    """Start the gym's removal (#377), with its slug typed again and a session proved in
+    the last 10 minutes: `not_suspended` for an active gym, `slug_mismatch` for another
+    slug. Nothing is deleted: the gym stays suspended, and its dates run from today
+    (`app.platform.removal`). One started already stays as it is."""
+    row = await fresh_call(
+        operator,
+        "SELECT * FROM platform_start_removal(:h, :g, :typed)",
+        {"g": gym_id, "typed": body.slug},
     )
+    if not row.suspended:
+        raise HTTPException(status.HTTP_409_CONFLICT, {"code": "not_suspended"})
+    if not row.confirmed:
+        raise HTTPException(status.HTTP_409_CONFLICT, {"code": "slug_mismatch"})
+    return Suspended(changed=row.changed)
+
+
+@router.delete("/gyms/{gym_id}/removal")
+async def cancel_removal(gym_id: uuid.UUID, operator: OperatorSession) -> Suspended:
+    """Cancel the gym's removal, with a session proved in the last 10 minutes: it stays
+    suspended, as before. A gym with none stays as it is."""
+    row = await fresh_call(operator, "SELECT * FROM platform_cancel_removal(:h, :g)", {"g": gym_id})
+    return Suspended(changed=row.changed)
+
+
+@router.post(
+    "/gyms/{gym_id}/removal/early",
+    responses={status.HTTP_409_CONFLICT: {"description": "No removal started"}},
+)
+async def record_early_deletion(
+    gym_id: uuid.UUID, body: EarlyDeletion, operator: OperatorSession, request: Request
+) -> Suspended:
+    """Record the day the gym asked in writing for its deletion before its export window
+    ends, with a session proved in the last 10 minutes: deletion may run from that day.
+    `not_removing` for a gym with no removal started; a day to come is refused."""
+    problem = removal.early_problem(
+        body.asked_on, gym_today(request.app.state.settings.jobs_timezone)
+    )
+    if problem is not None:
+        raise RequestValidationError(
+            [{"type": problem, "msg": "a date to come", "loc": ("body", "asked_on")}]
+        )
+    row = await fresh_call(
+        operator,
+        "SELECT * FROM platform_record_early_deletion(:h, :g, :asked_on)",
+        {"g": gym_id, "asked_on": body.asked_on},
+    )
+    if not row.removing:
+        raise HTTPException(status.HTTP_409_CONFLICT, {"code": "not_removing"})
+    return Suspended(changed=row.changed)
 
 
 # --- a fresh proof ---------------------------------------------------------------------
