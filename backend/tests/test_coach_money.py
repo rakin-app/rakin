@@ -130,6 +130,8 @@ def ids(loaded: Loaded) -> dict[str, str]:
         "pct": "10",
         # Where a payment may move (#280), which a coach is refused.
         "payment_id": unknown,
+        # "Pagado hasta" quoted up to a day (#286), which a coach is refused.
+        "through": "2026-11-30",
         # Clases's week or month (#426).
         "from": "2026-11-02",
         "to": "2026-11-08",
