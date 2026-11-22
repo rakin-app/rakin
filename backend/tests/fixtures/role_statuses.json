@@ -44,6 +44,11 @@
     "coach": 404,
     "owner": 404
   },
+  "DELETE /api/material/{material_id}": {
+    "owner": 404,
+    "admin": 404,
+    "coach": 404
+  },
   "DELETE /api/me/consents/{dependent_id}": {
     "admin": 404,
     "coach": 404,
@@ -304,6 +309,11 @@
     "coach": 200,
     "owner": 200
   },
+  "GET /api/me/material": {
+    "owner": 200,
+    "admin": 200,
+    "coach": 200
+  },
   "GET /api/me/page": {
     "admin": 200,
     "coach": 200,
@@ -469,6 +479,11 @@
     "coach": 403,
     "owner": 200
   },
+  "GET /api/schedule/{slot_id}/material": {
+    "owner": 404,
+    "admin": 404,
+    "coach": 404
+  },
   "GET /api/sessions": {
     "admin": 200,
     "coach": 200,
@@ -498,6 +513,11 @@
     "admin": 404,
     "coach": 404,
     "owner": 404
+  },
+  "GET /api/sessions/{session_id}/material": {
+    "owner": 404,
+    "admin": 404,
+    "coach": 404
   },
   "GET /api/sessions/{session_id}/roster": {
     "admin": 404,
@@ -568,6 +588,11 @@
     "admin": 422,
     "coach": 403,
     "owner": 422
+  },
+  "PATCH /api/material/{material_id}": {
+    "owner": 422,
+    "admin": 422,
+    "coach": 422
   },
   "PATCH /api/memberships/{membership_id}/freeze": {
     "admin": 422,
@@ -964,6 +989,11 @@
     "coach": 403,
     "owner": 422
   },
+  "POST /api/schedule/{slot_id}/material": {
+    "owner": 422,
+    "admin": 422,
+    "coach": 422
+  },
   "POST /api/sessions": {
     "admin": 422,
     "coach": 422,
@@ -973,6 +1003,11 @@
     "admin": 404,
     "coach": 403,
     "owner": 404
+  },
+  "POST /api/sessions/{session_id}/material": {
+    "owner": 422,
+    "admin": 422,
+    "coach": 422
   },
   "POST /api/sessions/{session_id}/reactivate": {
     "admin": 404,

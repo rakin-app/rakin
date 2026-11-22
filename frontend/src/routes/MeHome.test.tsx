@@ -7,6 +7,7 @@ import type { PersonTime } from '../api/matTime'
 import type { BankAccount, Dependent, MyPage, MyPayment } from '../api/me'
 import type { OpenPeriod } from '../api/proofs'
 import type { PersonRequirements } from '../api/requirements'
+import type { MyMaterial } from '../api/studyMaterial'
 import { createQueryClient } from '../api/queryClient'
 import { App } from '../App'
 import { es } from '../i18n/es'
@@ -64,6 +65,9 @@ const NO_TIME: PersonTime = {
 
 const NO_CLASSES: MyClasses = { timezone: 'America/Santiago', people: [] }
 
+// What `/api/me/material` answers (#537): none unless a test says.
+let material: MyMaterial[] = []
+
 const hoursOf = (tags: TagHours['tags'], untagged = 0): TagHours => ({
   first_day: `${YEAR}-11-01`,
   last_day: `${YEAR}-11-30`,
@@ -119,6 +123,7 @@ function stubPage(
       if (url.pathname === '/api/me/classes') return Response.json(classes)
       if (url.pathname === '/api/me/requirements') return Response.json(requirements)
       if (url.pathname === '/api/me/dependents') return Response.json(dependents)
+      if (url.pathname === '/api/me/material') return Response.json(material)
       const theirs = /^\/api\/me\/dependents\/([^/]+)\/time$/.exec(url.pathname)?.[1]
       if (theirs && dependentTime[theirs]) return Response.json(dependentTime[theirs])
       if (url.pathname === '/api/me/role') {
@@ -140,6 +145,56 @@ const nextCard = () => screen.getByRole('region', { name: copy.next.title })
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  material = []
+})
+
+describe('Material de estudio (#537)', () => {
+  const guard: MyMaterial = {
+    id: 'mat-1',
+    title: 'Pasaje de guardia',
+    body: 'Repasen\nlos tres pasos.',
+    links: ['https://www.youtube.com/watch?v=abc'],
+    class_type_name: 'Fundamentos',
+    program_name: 'Adultos',
+    day: `${YEAR}-11-18`,
+    recurring: false,
+    shared_by_name: 'Profe Prueba',
+    created_at: `${YEAR}-11-18T22:00:00Z`,
+  }
+
+  it('lists what was shared, newest first, and opens its text and links on a tap', async () => {
+    material = [
+      guard,
+      { ...guard, id: 'mat-2', title: 'Ciclo de fuerza', recurring: true, day: `${YEAR}-11-03`, body: null, links: [] },
+    ]
+    stubPage(diego())
+    renderMe()
+
+    const section = within(await screen.findByRole('region', { name: copy.material.title }))
+    const rows = section.getAllByRole('button', { expanded: false })
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining('Pasaje de guardia'),
+      expect.stringContaining('Ciclo de fuerza'),
+    ])
+    expect(section.getByText(copy.material.when('Fundamentos', '18 nov'))).toBeInTheDocument()
+    expect(section.getByText(copy.material.since('Fundamentos', '3 nov'))).toBeInTheDocument()
+    expect(section.getAllByText(copy.material.sharedBy('Profe Prueba'))).toHaveLength(2)
+    expect(section.queryByRole('link')).not.toBeInTheDocument()
+
+    await userEvent.setup().click(rows[0]!)
+    expect(rows[0]).toHaveAttribute('aria-expanded', 'true')
+    expect(section.getByRole('link', { name: /youtube\.com/ })).toHaveAttribute('href', guard.links[0])
+    expect(section.getByText(/Repasen/)).toBeVisible()
+  })
+
+  it('shows no section when nothing was shared', async () => {
+    stubPage(diego())
+    renderMe()
+
+    await screen.findByRole('heading', { level: 1, name: 'Hola, Diego' })
+    await waitFor(() => expect(screen.queryByText(copy.material.loading)).not.toBeInTheDocument())
+    expect(screen.queryByRole('region', { name: copy.material.title })).not.toBeInTheDocument()
+  })
 })
 
 describe('Mi página', () => {

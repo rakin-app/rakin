@@ -28,6 +28,7 @@ import { t } from '../i18n/es'
 import { useDocumentTitle } from '../pageTitle'
 import './MeHome.css'
 import { MyConsents } from './MyConsents'
+import { MyMaterial } from './MyMaterial'
 import { MyPlans } from './MyPlans'
 import { MyRequirements } from './MyRequirements'
 import { isFamily, payableTogether, ProofUpload } from './ProofUpload'
@@ -44,7 +45,7 @@ const copy = t.me
  * with "Pedir congelamiento" (#270), the payments already sent with how each was reviewed,
  * and for a guardian, their consent for each minor in their care (#370), what they and
  * their dependents owe in one transfer, and each dependent's rank, classes and time on
- * the mat (#66). Someone on two plans, a course beside a monthly one, reads the plan by
+ * the mat (#66), and the study material their coaches shared with them (#537). Someone on two plans, a course beside a monthly one, reads the plan by
  * what is due next and by each payment (#354). From 1024px it is two columns: the
  * payment and its upload, and beside them the rest.
  */
@@ -92,6 +93,7 @@ export function MeHome() {
           </div>
           <div className="me-home__column">
             <Training page={page.data} />
+            <MyMaterial />
             <MyMatTime />
             <DependentsTraining />
             <MyClasses mine={page.data.person_id} />

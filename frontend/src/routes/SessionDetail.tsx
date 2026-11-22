@@ -49,6 +49,7 @@ import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
 import { Banner, Card, cardClass, PlainList, SectionTitle } from '../components/Card'
 import { PageTitle } from '../components/PageHeader'
+import { StudyMaterial } from '../components/StudyMaterial'
 
 const copy = t.admin.session
 
@@ -64,6 +65,9 @@ const MAX_NOTES = 4000
  * its coach. The notes are staff's alone; a student reads the topic and tags (#243). Once it has begun, "Registro del timer", what its blocks ran, which its coach
  * or an owner or admin corrects after. An owner or admin also edits it ("Editar clase"),
  * cancels it or deletes it. A cancelled class takes no attendance and runs no timer.
+ * "Material de estudio" (#537): notes and links for an audience its coach, or an owner
+ * or admin, chooses; on this class alone or, for a class of the schedule, on it and the
+ * ones after it.
  */
 export function SessionDetail() {
   const { sessionId } = route.useParams()
@@ -120,6 +124,13 @@ export function SessionDetail() {
         />
       )}
       {runs ? <TopicForm key={data.id} session={data} /> : <TopicView session={data} />}
+      <StudyMaterial
+        key={`material-${data.id}`}
+        host={{ kind: 'session', id: data.id }}
+        canShare={runs}
+        recurring={data.slot_date ? { slotDate: data.slot_date } : undefined}
+        today={today}
+      />
       {runs && begun && !cancelled && <TimerRecord key={`record-${data.id}`} session={data} />}
       {managesGym(me.data && accessOf(me.data)) && (
         <>

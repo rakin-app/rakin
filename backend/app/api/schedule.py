@@ -273,6 +273,11 @@ async def update_slot(
             ),
             {"id": slot_id, "target": target, "start": start},
         )
+        # Its study material (#537) shows on the new slot's classes too, and still on
+        # the old one's before the change.
+        await session.execute(
+            text("SELECT study_material_follow(:id, :target)"), {"id": slot_id, "target": target}
+        )
     if retag or not in_place:
         await set_tags(session, "schedule_slot_tag", "slot_id", target, new_tags)
 

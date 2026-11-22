@@ -59,6 +59,8 @@ class Gym:
     expense: uuid.UUID
     recurring: uuid.UUID
     newcomer: uuid.UUID  # in the gym, on no line and in no group
+    material: uuid.UUID  # study material on `session`, linked to nothing
+    recurring_material: uuid.UUID  # on a slot, for a plan
 
 
 Args = Callable[[Gym, uuid.UUID], tuple[object, ...]]
@@ -375,6 +377,54 @@ CASES = (
         "INSERT INTO gym_month_figure (gym_id, month, figure, value, rules_version)"
         " VALUES ($1, '2026-02-01', 'income_clp', 1, 1)",
     ),
+    # Material de estudio (0088): read by the team and its audience (`app_on_team`, not
+    # a permission), written by whoever runs classes.
+    Case(
+        "study_material_insert",
+        Permission.ATTENDANCE,
+        "INSERT INTO study_material (gym_id, session_id, title, audience, created_by)"
+        " VALUES ($1, $2, 'Pasaje de guardia', 'program', $3)",
+        lambda gym, actor: (gym.id, gym.session, actor),
+    ),
+    Case(
+        "study_material_update",
+        Permission.ATTENDANCE,
+        "UPDATE study_material SET title = 'Guardia, parte 2' WHERE id = $1",
+        lambda gym, actor: (gym.material,),
+    ),
+    Case(
+        "study_material_slot_insert",
+        Permission.ATTENDANCE,
+        "INSERT INTO study_material_slot (gym_id, material_id, slot_id)"
+        " SELECT $1, $2, id FROM schedule_slot WHERE gym_id = $1",
+        lambda gym, actor: (gym.id, gym.material),
+    ),
+    Case(
+        "study_material_slot_delete",
+        Permission.ATTENDANCE,
+        "DELETE FROM study_material_slot WHERE material_id = $1",
+        lambda gym, actor: (gym.recurring_material,),
+    ),
+    Case(
+        "study_material_plan_insert",
+        Permission.ATTENDANCE,
+        "INSERT INTO study_material_plan (gym_id, material_id, plan_id)"
+        " SELECT $1, $2, id FROM plan WHERE gym_id = $1",
+        lambda gym, actor: (gym.id, gym.material),
+    ),
+    Case(
+        "study_material_plan_delete",
+        Permission.ATTENDANCE,
+        "DELETE FROM study_material_plan WHERE material_id = $1",
+        lambda gym, actor: (gym.recurring_material,),
+    ),
+    Case(
+        "audit_event_material",
+        Permission.ATTENDANCE,
+        "INSERT INTO audit_event (gym_id, actor_id, action, detail)"
+        " VALUES ($1, $2, 'study_material_changed', jsonb_build_object('material_id', $3::text))",
+        lambda gym, actor: (gym.id, actor, str(gym.material)),
+    ),
 )
 
 
@@ -490,6 +540,36 @@ def gym(db: Database) -> Gym:
     newcomer = uuid.uuid4()
     superuser(db, "INSERT INTO person (id, name) VALUES ($1, 'x')", newcomer)
     one("INSERT INTO gym_person (gym_id, person_id, name) VALUES ($1, $2, 'x')", newcomer)
+    # Study material (0088): one on the session, one on a slot of its class for a plan.
+    material = one(
+        "INSERT INTO study_material (gym_id, session_id, title, audience, created_by)"
+        " VALUES ($1, $2, 'Guardia', 'program', $3) RETURNING id",
+        session,
+        owner,
+    )
+    slot = one(
+        "INSERT INTO schedule_slot (gym_id, class_type_id, weekdays, start_time,"
+        " duration_minutes, coach_id, valid_from)"
+        " SELECT $1, class_type_id, '{1}', '19:00', 60, $3, '2026-11-02' FROM session"
+        " WHERE id = $2 RETURNING id",
+        session,
+        owner,
+    )
+    recurring_material = one(
+        "INSERT INTO study_material (gym_id, starts_on, title, audience, created_by)"
+        " VALUES ($1, '2026-11-02', 'Ciclo', 'plans', $2) RETURNING id",
+        owner,
+    )
+    one(
+        "INSERT INTO study_material_slot (gym_id, material_id, slot_id) VALUES ($1, $2, $3)",
+        recurring_material,
+        slot,
+    )
+    one(
+        "INSERT INTO study_material_plan (gym_id, material_id, plan_id)"
+        " SELECT $1, $2, id FROM plan WHERE gym_id = $1",
+        recurring_material,
+    )
     return Gym(
         gym_id,
         owner,
@@ -503,6 +583,8 @@ def gym(db: Database) -> Gym:
         expense,
         recurring,
         newcomer,
+        material,
+        recurring_material,
     )
 
 
