@@ -126,8 +126,8 @@ const LEDGER: MembershipLedger = {
   ],
   freezes: [],
   periods: [
-    { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 45000, voided_clp: 0, void_id: null, charged_clp: 45000 },
-    { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0, void_id: null, charged_clp: 45000 },
+    { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 45000, voided_clp: 0, void_id: null, charged_clp: 45000, due_date: '2026-10-30', due_date_was: null },
+    { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0, void_id: null, charged_clp: 45000, due_date: '2026-09-30', due_date_was: null },
   ],
   refundable_payments: [
     {
@@ -632,7 +632,7 @@ describe('Ficha de alumno', () => {
     expect(within(ledger).getByRole('button', { name: /^Pago septiembre/ })).toBeInTheDocument()
   })
 
-  it('offers a charge that still owes "Cambiar monto" and "Anular cargo", opened under it (#279)', async () => {
+  it('offers a charge that still owes "Cambiar monto", "Mover vencimiento" and "Anular cargo", opened under it (#279, #283)', async () => {
     stubApi()
     renderAt(PATH)
     const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
@@ -640,6 +640,7 @@ describe('Ficha de alumno', () => {
     const chips = within(fixes).getAllByRole('button').filter((b) => b.hasAttribute('aria-pressed'))
     expect(chips.map((b) => b.textContent)).toEqual([
       copy.fix.changeAmount,
+      copy.fix.moveDueDate,
       copy.fix.voidCharge,
     ])
     expect(within(fixes).getByRole('button', { name: copy.fix.changeAmount })).toHaveAttribute('aria-pressed', 'true')
@@ -687,8 +688,77 @@ describe('Ficha de alumno', () => {
     ])
   })
 
+  it('moves a charge\'s due date: "le doy hasta el 10", with its reason (#283)', async () => {
+    const calls = stubApi({
+      extra: (path, method) =>
+        path === '/api/ledger/periods/p-oct/due-date' && method === 'PATCH'
+          ? { body: { id: 'p-oct', due_date: '2026-11-10', due_date_was: '2026-10-30' } }
+          : undefined,
+    })
+    renderAt(PATH)
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.moveDueDate }))
+    const form = within(fixes).getByRole('form', { name: copy.dueDateForm.title })
+
+    // From the period's start to its end plus 60 days.
+    const day = within(form).getByLabelText(copy.dueDateForm.day)
+    expect(day).toHaveAttribute('min', '2026-10-30')
+    expect(day).toHaveAttribute('max', '2027-01-28')
+    expect(within(form).getByText(copy.dueDateForm.hint('30 oct', '28 ene'))).toBeInTheDocument()
+    // A day and a reason are required.
+    await userEvent.click(within(form).getByRole('button', { name: copy.dueDateForm.submit }))
+    expect(within(form).getByText(copy.dueDateForm.dayNeeded('30 oct', '28 ene'))).toBeInTheDocument()
+    expect(within(form).getByText(copy.dueDateForm.reasonNeeded)).toBeInTheDocument()
+    await userEvent.type(day, '2026-11-10')
+    expect(within(form).getByText(copy.dueDateForm.preview('30 oct', '10 nov'))).toBeInTheDocument()
+    await userEvent.type(within(form).getByLabelText(copy.dueDateForm.reason), ' le doy hasta el 10 ')
+    await userEvent.click(within(form).getByRole('button', { name: copy.dueDateForm.submit }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.dueDateForm.done('octubre', '10 nov'))
+    expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
+      {
+        method: 'PATCH',
+        path: '/api/ledger/periods/p-oct/due-date',
+        body: { due_date: '2026-11-10', reason: 'le doy hasta el 10' },
+      },
+    ])
+  })
+
+  it('says why a due date was not moved (#283)', async () => {
+    stubApi({
+      extra: (path, method) =>
+        path === '/api/ledger/periods/p-oct/due-date' && method === 'PATCH'
+          ? { status: 409, body: { detail: { code: 'paid', message: 'paid' } } }
+          : undefined,
+    })
+    renderAt(PATH)
+    const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.moveDueDate }))
+    const form = within(fixes).getByRole('form', { name: copy.dueDateForm.title })
+    await userEvent.type(within(form).getByLabelText(copy.dueDateForm.day), '2026-11-10')
+    await userEvent.type(within(form).getByLabelText(copy.dueDateForm.reason), 'le doy hasta el 10')
+    await userEvent.click(within(form).getByRole('button', { name: copy.dueDateForm.submit }))
+
+    expect(await within(form).findByText(copy.dueDateRefused.paid)).toBeInTheDocument()
+  })
+
+  it('reads a moved due date on the charge\'s line: "vence 10 nov (antes 30 oct)" (#283)', async () => {
+    stubApi({
+      ledger: {
+        ...LEDGER,
+        periods: LEDGER.periods.map((p) => (p.id === 'p-oct' ? { ...p, due_date: '2026-11-10', due_date_was: '2026-10-30' } : p)),
+      },
+    })
+    renderAt(PATH)
+    const ledger = await libro()
+
+    expect(await within(ledger).findByText(copy.ledger.dueMoved('10 nov', '30 oct'), { exact: false })).toBeInTheDocument()
+    // Not on a charge whose due date never moved.
+    expect(within(ledger).getAllByText(/antes/)).toHaveLength(1)
+  })
+
   it('raises a paid charge: the difference owed on top (#279)', async () => {
-    const paid = { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0, void_id: null, charged_clp: 45000 }
+    const paid = { id: 'p-sep', period_start: '2026-09-30', period_end: '2026-10-29', outstanding_clp: 0, voided_clp: 0, void_id: null, charged_clp: 45000, due_date: '2026-09-30', due_date_was: null }
     const calls = stubApi({
       ledger: {
         ...LEDGER,
@@ -832,7 +902,7 @@ describe('Ficha de alumno', () => {
     owed_clp: 25000,
     balance_clp: 25000,
     entries: [],
-    periods: [{ id: 'p-old', period_start: '2026-11-01', period_end: '2026-11-30', outstanding_clp: 25000, voided_clp: 0, void_id: null, charged_clp: 25000 }],
+    periods: [{ id: 'p-old', period_start: '2026-11-01', period_end: '2026-11-30', outstanding_clp: 25000, voided_clp: 0, void_id: null, charged_clp: 25000, due_date: '2026-11-01', due_date_was: null }],
     refundable_payments: [],
   }
 
@@ -883,7 +953,7 @@ describe('Ficha de alumno', () => {
     ])
   })
 
-  const VOIDED_OCT = { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 45000, void_id: 'v-oct', charged_clp: 0 }
+  const VOIDED_OCT = { id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 45000, void_id: 'v-oct', charged_clp: 0, due_date: '2026-10-30', due_date_was: null }
   const VOIDED_ENTRIES = [
     entry({
       id: 'void-oct',
@@ -1122,7 +1192,7 @@ describe('Ficha de alumno', () => {
             voided: { reason: 'alumno de prueba', by_name: 'Martín', at: '2026-11-08T12:00:00Z' },
           }),
         ],
-        periods: [{ id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 0, void_id: null, charged_clp: 45000 }],
+        periods: [{ id: 'p-oct', period_start: '2026-10-30', period_end: '2026-11-29', outstanding_clp: 0, voided_clp: 0, void_id: null, charged_clp: 45000, due_date: '2026-10-30', due_date_was: null }],
       },
     })
     renderAt(PATH)
@@ -2059,6 +2129,28 @@ describe('Ficha de alumno', () => {
       'Quitó el descuentoBeca · desde el cobro del 15 dic · Mensual adultos · por Ana · 2 nov30% → 0%',
       'Cambió el descuentoBeca · desde el cobro del 15 dic · Mensual adultos · por Ana · 2 nov50% → 30%',
       'Puso descuentoHermanos · desde el cobro del 15 dic · Mensual adultos · por Ana · 2 nov0% → 50%',
+    ])
+  })
+
+  it('lists a due date moved among the corrections, before → after (#283)', async () => {
+    stubApi({
+      corrections: [
+        correction({
+          id: 'due',
+          action: 'due_date_changed',
+          purpose: null,
+          reason: 'le doy hasta el 10',
+          before: null,
+          after: null,
+          due_date: { before: '2026-10-30', after: '2026-11-10' },
+        }),
+      ],
+    })
+    renderAt(PATH)
+
+    const fixes = await screen.findByRole('region', { name: copy.corrections.title })
+    expect(within(fixes).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'Movió vencimiento octubrele doy hasta el 10 · Mensual adultos · por Ana · 2 nov30 oct → 10 nov',
     ])
   })
 

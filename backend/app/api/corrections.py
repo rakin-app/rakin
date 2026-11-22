@@ -8,7 +8,8 @@ adjustment write one each (`app.api.ledger`); a plan voided by mistake writes on
 period it voids, each marked `plan_void`, a payment undone as recorded by mistake one
 (#281), on its period or its cobro line (`record_line_correction`, whose figures are
 the line's: what it owes, as both), a payment moved one on its membership and, when it
-went to a sibling, one on theirs (`app.api.moves`, #280), a lapsed plan reactivated one with its
+went to a sibling, one on theirs (`app.api.moves`, #280), a due date moved one with the
+date before and after (`app.api.due_dates`, #283), a lapsed plan reactivated one with its
 status before and after, and a discount set, changed or taken off one with the
 percentage and reason before and after (`app.api.memberships`, #25).
 
@@ -26,7 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.permissions import LedgerReadSession
-from app.schemas.ledger import Correction, Corrections, DiscountShift, Figures
+from app.schemas.ledger import Correction, Corrections, DateShift, DiscountShift, Figures
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
 
@@ -202,6 +203,7 @@ def correction(row: Any) -> Correction:
         discount=DiscountShift.model_validate(detail["discount"]) if "discount" in detail else None,
         moved=detail.get("moved"),
         other_period_start=row.other_period_start,
+        due_date=DateShift.model_validate(detail["due_date"]) if "due_date" in detail else None,
     )
 
 

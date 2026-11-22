@@ -589,6 +589,11 @@
     "coach": 403,
     "owner": 422
   },
+  "PATCH /api/ledger/periods/{period_id}/due-date": {
+    "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
   "PATCH /api/material/{material_id}": {
     "owner": 422,
     "admin": 422,

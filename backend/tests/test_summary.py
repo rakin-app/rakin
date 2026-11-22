@@ -119,15 +119,18 @@ def a_member(
     return person, membership_id
 
 
-def a_period(db: Database, gym: uuid.UUID, membership: uuid.UUID, due: date = DUE) -> uuid.UUID:
+def a_period(
+    db: Database, gym: uuid.UUID, membership: uuid.UUID, due: date = DUE, amount: int = 30000
+) -> uuid.UUID:
     period: uuid.UUID = admin(
         db,
         "INSERT INTO billing_period (gym_id, membership_id, period_start, period_end,"
-        " amount_due_clp, due_date) VALUES ($1, $2, $3, $4, 30000, $3) RETURNING id",
+        " amount_due_clp, due_date) VALUES ($1, $2, $3, $4, $5, $3) RETURNING id",
         gym,
         membership,
         due,
         due + timedelta(days=29),
+        amount,
     )
     return period
 

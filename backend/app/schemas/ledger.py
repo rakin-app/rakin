@@ -145,6 +145,52 @@ class RestoreConflict(BaseModel):
     message: str
 
 
+class DueDateRecord(BaseModel):
+    """Mover vencimiento (#283): "le doy hasta el 10". A period not paid in full falls due
+    on another day, from its start to its end plus `MAX_DUE_DATE_DAYS_PAST_END`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    due_date: date
+    # Mandatory: why the member has until then. "Correcciones" reads it.
+    reason: Note
+
+
+class DueDateRefusal(StrEnum):
+    """Why a period's due date cannot move, for the ficha to say so."""
+
+    # Paid in full, by payments, adjustments or a void: nothing is due on it.
+    PAID = "paid"
+    # Outside the period's start to its end plus `MAX_DUE_DATE_DAYS_PAST_END`.
+    OUT_OF_RANGE = "out_of_range"
+    # The due date it already has.
+    UNCHANGED = "unchanged"
+
+
+class DueDateConflict(BaseModel):
+    code: DueDateRefusal
+    message: str
+    # The days it may fall due on, for `out_of_range`.
+    earliest: date | None = None
+    latest: date | None = None
+
+
+class MovedDueDate(BaseModel):
+    """The period as "Mover vencimiento" leaves it."""
+
+    id: uuid.UUID
+    due_date: date
+    # The due date it had before.
+    due_date_was: date
+
+
+class DateShift(BaseModel):
+    """A date a correction moved (#283): before and after."""
+
+    before: date
+    after: date
+
+
 class PaymentVoidRecord(BaseModel):
     """Anular un pago registrado por error (#281): a wrong amount, the wrong member, money
     that never arrived. All that is left of it is undone; the right one is recorded anew."""
@@ -413,6 +459,8 @@ class Correction(BaseModel):
     # `out`) or came from (`in`).
     moved: str | None = None
     other_period_start: date | None = None
+    # On a `due_date_changed` row (#283): the period's due date before and after.
+    due_date: DateShift | None = None
 
 
 class Corrections(BaseModel):
@@ -517,6 +565,10 @@ class LedgerPeriod(BaseModel):
     # What it charges, its validated adjustments taken off but not its payments: what
     # "Cambiar monto" changes (#279).
     charged_clp: int = 0
+    # When it falls due, and, once "Mover vencimiento" moved it (#283), the due date it
+    # was billed with; null if never moved, or if a freeze moved it since.
+    due_date: date
+    due_date_was: date | None = None
 
 
 class RefundablePayment(BaseModel):

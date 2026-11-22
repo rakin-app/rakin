@@ -14,6 +14,7 @@ from app.api import (
     consent,
     corrections,
     custom_fields,
+    due_dates,
     expense_recurring,
     expenses,
     extra_charges,
@@ -168,6 +169,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ledger.router)
     app.include_router(corrections.router)
     app.include_router(moves.router)
+    app.include_router(due_dates.router)
     app.include_router(ledger_export.router)
     app.include_router(inactive.router)
     app.include_router(summary.router)
