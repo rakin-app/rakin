@@ -3253,6 +3253,8 @@ export const es = {
       // The month's ledger for the accountant (#40).
       exportCsv: 'Exportar CSV',
       exportXlsx: 'Exportar Excel',
+      // The month's expenses, beside the ledger's CSV, for whoever sees expenses (#317).
+      exportExpensesCsv: 'Gastos del mes (CSV)',
       // Cobros extra and the exports, out of the header's row (#357).
       moreActions: 'Más',
       kpisLabel: 'Resumen del mes',

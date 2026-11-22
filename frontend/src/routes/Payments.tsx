@@ -3,6 +3,7 @@ import { getRouteApi, Link } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
 import {
   BOOK_FILTERS,
+  expensesExportPath,
   exportPath,
   ledgerBookQuery,
   type BookEntry,
@@ -11,7 +12,7 @@ import {
   type BookKpis,
   type PersonRef,
 } from '../api/ledger'
-import { myAccessQuery, readsLedger } from '../api/me'
+import { myAccessQuery, readsExpenses, readsLedger } from '../api/me'
 import { membershipLedgerQuery, membershipsQuery, shownMemberships } from '../api/member'
 import { membersQuery, type MemberRow } from '../api/people'
 import { pendingCountQuery } from '../api/proofs'
@@ -70,6 +71,8 @@ const route = getRouteApi('/admin/pagos')
  * refunds are made on the member's detail (#38) and listed here with their sign.
  *
  * "Exportar CSV" and "Exportar Excel" download the month shown for the accountant (#40).
+ * Whoever also sees expenses gets the Excel with its Gastos and Resumen sheets, and
+ * "Gastos del mes (CSV)" beside the CSV (#317).
  *
  * A search keeps a member's lines, and a guardian's dependents'; "Registrar pago" picks
  * a member and opens the member detail's payment form for them (#107).
@@ -98,6 +101,7 @@ export function Payments() {
 }
 
 function Book() {
+  const access = useQuery(myAccessQuery()).data
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const filter = search.filter ?? 'all'
@@ -190,6 +194,11 @@ function Book() {
               <a href={exportPath(latest.month, 'csv')} download className={moreItemClass()}>
                 {copy.exportCsv}
               </a>
+              {readsExpenses(access) && (
+                <a href={expensesExportPath(latest.month)} download className={moreItemClass()}>
+                  {copy.exportExpensesCsv}
+                </a>
+              )}
               <a href={exportPath(latest.month, 'xlsx')} download className={moreItemClass()}>
                 {copy.exportXlsx}
               </a>

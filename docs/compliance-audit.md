@@ -157,7 +157,7 @@ Per person, per gym, unless marked global. "Drop?" asks whether the field can go
 | Browser `localStorage` on staff phones | unsent attendance marks and class drafts | offline classes | cleared on sign-out (`frontend/src/api/drafts.ts`) |
 | Logs (Docker `json-file`, 5 × 20 MB per service) | method, path (with ids), status, request id | operations | no names, RUTs or emails are logged (`backend/app/middleware.py:46`) |
 | Backups (age-encrypted dumps) | everything in the database | recovery | see [section 4](#4-offboarding) |
-| The accountant's export (downloaded by owner or admin) | name, RUT, amounts, non-sensitive custom fields | the gym's books | RUT could be optional per gym |
+| The accountant's export (downloaded with `money_read`) | name, RUT, amounts, non-sensitive custom fields; with `expenses_read`, the month's expenses: payee, note, whether a receipt is held (#317) | the gym's books | RUT could be optional per gym |
 
 **The RUT.** It is optional at every entry point since #165: email is the identity without one, and an import keeps a row with neither. It is needed for:
 
