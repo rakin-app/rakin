@@ -101,6 +101,7 @@ UPDATE class_type SET name = {open_mat} WHERE kind = 'open_mat';
 UPDATE block_kind SET name = {practice} WHERE is_sparring;
 UPDATE block_kind SET name = {drilling}
     WHERE id = md5(gym_id::text || '/block_kind/drilling')::uuid;
+{data}
 COMMIT;
 """
 
@@ -197,6 +198,8 @@ class Scene:
     shots: tuple[Shot, ...] = ()
     loops: tuple[Loop, ...] = ()
     sport_free: bool = False
+    # More SQL for the scene's shots, run in the same transaction.
+    data: str = ""
 
     def sql(self) -> str:
         def lit(value: object) -> str:
@@ -216,6 +219,7 @@ class Scene:
             open_mat=lit(self.open_mat),
             practice=lit(self.practice),
             drilling=lit(self.drilling),
+            data=self.data,
         )
 
 
@@ -286,6 +290,16 @@ def take_attendance(rec: Recorder) -> None:
     rec.hold(1.4)
 
 
+# The polerones the seed's cobro extra pays back (backend/app/seed/build.py, `_expenses`)
+# are bought the month before their cuotas fall due, so the seed's month on Finanzas
+# reads "gastos recuperados: $0 pagado". The neutral scene buys them on the month's
+# first day, and the academia scene puts them back on the seed's date: its as-of date,
+# plus the cobro's `due_in` (-10 days), less 25.
+POLERONES = "UPDATE expense SET spent_on = {day} WHERE extra_charge_id IS NOT NULL"
+AS_OF = "(SELECT (settings #>> '{seed,as_of}')::date FROM gym WHERE slug = 'academia-sur')"
+POLERONES_THIS_MONTH = POLERONES.format(day=f"date_trunc('month', {AS_OF})::date") + ";"
+POLERONES_AS_SEEDED = POLERONES.format(day=f"{AS_OF} - 35") + ";"
+
 NEUTRAL_WORDS = None  # today's: academia, alumnos, profe
 
 SCENES = (
@@ -300,6 +314,7 @@ SCENES = (
         practice="Práctica libre",
         drilling="Ejercicios",
         sport_free=True,
+        data=POLERONES_THIS_MONTH,
         shots=(
             # The hero: Hoy on the computer, and on the phone.
             Shot("hoy-1280", OWNER, "/admin", DESKTOP),
@@ -310,6 +325,8 @@ SCENES = (
             Shot("comprobante-390", OWNER, "/admin/pagos/comprobantes", PHONE),
             Shot("vencidos-390", OWNER, "/admin", PHONE, scroll_to="Vencidos"),
             Shot("pruebas-390", OWNER, "/admin", PHONE, scroll_to="Pruebas", offset=360),
+            # Lo que entra y lo que sale (#563): Finanzas, the month's result.
+            Shot("finanzas-390", OWNER, "/admin/finanzas", PHONE),
             # Para tus profes: the month's classes, and the requirements on a ficha.
             Shot(
                 "mes-1280",
@@ -417,6 +434,7 @@ SCENES = (
         open_mat="Open mat",
         practice="Sparring",
         drilling="Drilling",
+        data=POLERONES_AS_SEEDED,
         shots=(
             Shot(
                 "actividad-academia-390",

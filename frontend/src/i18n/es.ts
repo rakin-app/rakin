@@ -4534,6 +4534,141 @@ export const es = {
     get toAdmin() {
       return `Ir al panel ${w.ofThePlace}`
     },
+    // "Mis datos" (#371): everything the gym holds on the student, and on each
+    // dependent, with a JSON download of the same.
+    myData: {
+      link: 'Mis datos',
+      title: 'Mis datos',
+      back: 'Volver a mi página',
+      loading: 'Cargando tus datos…',
+      error: 'No pudimos cargar tus datos.',
+      retry: 'Reintentar',
+      get intro() {
+        return `Esto es todo lo que ${w.thePlace} guarda sobre ti.`
+      },
+      get introFamily() {
+        return `Esto es todo lo que ${w.thePlace} guarda sobre ti y sobre quienes están a tu cargo.`
+      },
+      download: 'Descargar mis datos',
+      downloadHint: 'Un archivo JSON con todo lo de esta página, para guardarlo o llevarlo a otro servicio.',
+      sourceTitle: '¿De dónde vienen?',
+      get source() {
+        return `Los entregaste tú, al inscribirte o desde tu página, o los registró ${w.thePlace}: al darte de alta, al marcar tu asistencia y al revisar tus pagos.`
+      },
+      retentionTitle: '¿Cuánto tiempo se guardan?',
+      // Around the link to the gym's privacy notice.
+      purposeBefore: 'Para qué se usan y quién más los trata está en la ',
+      purposeLink: 'política de privacidad',
+      purposeAfter: '.',
+      fixTitle: '¿Algo está mal?',
+      // Around the gym's privacy email, a link.
+      fixBefore: 'Escribe a ',
+      fixAfter: ' y pide que lo corrijan.',
+      get fixNoEmail() {
+        return `Pídele a ${w.thePlace} que lo corrija.`
+      },
+      mine: 'Tus datos',
+      theirs: (name: string) => `Datos de ${name}`,
+      onlyFilled: 'Solo aparece lo que tiene registros.',
+      count: (title: string, n: number) => `${title} (${n})`,
+      none: '—',
+      yes: 'Sí',
+      no: 'No',
+      span: (from: string, to: string | null) => (to ? `${from} – ${to}` : `desde ${from}`),
+      parts: {
+        record: 'Ficha',
+        guardians: 'Apoderados',
+        dependents: 'A tu cargo',
+        fields: 'Campos adicionales',
+        memberships: 'Planes',
+        planEvents: 'Cambios en tus planes',
+        freezes: 'Congelamientos',
+        freezeRequests: 'Solicitudes de congelamiento',
+        periods: 'Cobros de los planes',
+        extraCharges: 'Cobros extra',
+        entries: 'Pagos y movimientos',
+        historyPayments: 'Pagos anteriores a Rakin',
+        attendance: 'Asistencia',
+        grades: 'Grados',
+        requirements: 'Requisitos',
+        consents: 'Consentimientos',
+        messages: 'Mensajes enviados',
+        groups: 'Grupos de cobro',
+        staff: 'Equipo',
+        email: 'Correos',
+      },
+      record: {
+        name: 'Nombre',
+        rut: 'RUT',
+        email: 'Correo',
+        phone: 'Teléfono',
+        dob: 'Fecha de nacimiento',
+        noWhatsapp: 'Sin WhatsApp',
+        memberSince: 'Entrena desde',
+        priorClasses: 'Clases antes de Rakin',
+        leftOn: 'Dejó de entrenar',
+        leftReason: 'Motivo',
+        addedAt: 'Registrado',
+        updatedAt: 'Última modificación',
+      },
+      field: {
+        sensitive: 'sensible',
+        archived: 'ya no se pide',
+      },
+      membership: {
+        discount: (pct: number, reason: string | null) => (reason ? `${pct}% de descuento: ${reason}` : `${pct}% de descuento`),
+        credits: (n: number) => (n === 1 ? '1 clase disponible' : `${n} clases disponibles`),
+        next: (plan: string, from: string | null) => (from ? `luego ${plan} desde el ${from}` : `luego ${plan}`),
+        cancelled: (day: string, reason: string | null) => (reason ? `cancelado el ${day}: ${reason}` : `cancelado el ${day}`),
+        voided: (day: string, reason: string | null) => (reason ? `anulado el ${day}: ${reason}` : `anulado el ${day}`),
+      },
+      planEvent: {
+        frozen: 'Congelado',
+        unfrozen: 'Descongelado',
+        lapsed: 'Caducado',
+        promoted: 'Pasó a su plan siguiente',
+      },
+      freezeRequest: {
+        pending: 'Pendiente',
+        approved: 'Aprobada',
+        rejected: 'Rechazada',
+        withdrawn: 'Retirada',
+      },
+      period: (plan: string, due: string) => `${plan} · vence el ${due}`,
+      extraCharge: {
+        due: (day: string) => `vence el ${day}`,
+        cancelled: (day: string) => `anulado el ${day}`,
+      },
+      entry: {
+        kind: { charge: 'Cargo', payment: 'Pago', adjustment: 'Ajuste', refund: 'Devolución' },
+        status: { pending: 'En revisión', validated: 'Validado', rejected: 'Rechazado' },
+        proof: 'con comprobante',
+      },
+      method: { cash: 'Efectivo', transfer: 'Transferencia', other: 'Otro medio' },
+      history: {
+        covers: (month: string) => `por ${month}`,
+      },
+      visit: (classType: string, program: string) => `${classType} · ${program}`,
+      consent: {
+        notice_accepted: 'Aceptó la política de privacidad',
+        consent_given: 'Dio la autorización de datos',
+        consent_withdrawn: 'Retiró la autorización de datos',
+        source: { join: 'en el formulario de inscripción', page: 'desde su página' },
+        by: (name: string) => `por ${name}`,
+      },
+      message: {
+        channel: { email: 'Correo', whatsapp: 'WhatsApp' },
+        status: { sent: 'enviado', failed: 'no se pudo enviar', suppressed: 'no enviado' },
+        to: (address: string) => `a ${address}`,
+      },
+      get unsubscribed() {
+        return `Dejó de recibir los correos ${w.ofThePlace}`
+      },
+      staff: {
+        holder: 'Titular de la cuenta',
+        role: 'En el equipo',
+      },
+    },
     // "Requisitos" (#349): what the gym asks before training, and where each stands.
     requirements: {
       title: 'Mis requisitos',

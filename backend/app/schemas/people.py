@@ -365,7 +365,7 @@ class ForgetRefused(BaseModel):
     detail: ForgetConflict
 
 
-# Why someone cannot be anonymised (`anonymise_refusal`, 0098): `anonymised`, they
+# Why someone cannot be anonymised (`anonymise_refusal`, 0099): `anonymised`, they
 # already are; `running`, they are not dado de baja or a plan of theirs has not ended;
 # `pending`, a proof waits; `owes`, a charge not voided is owed; `staff` and `guardian`
 # as for a deletion. Money the gym kept is no reason: the books keep it.

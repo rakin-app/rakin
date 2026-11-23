@@ -39,6 +39,7 @@ from tests.pg import (
     seeded_today,
     throwaway_database,
 )
+from tests.test_endpoint_permissions import routes
 from tests.test_member_roll import enrolled, forget, leave, memberships, plan
 from tests.test_memberships import add_staff
 from tests.test_people import new_phone, new_rut
@@ -299,6 +300,15 @@ def test_anonymising_keeps_the_books_and_nothing_of_them(
         "entries"
     ]
     assert sum(e["amount_clp"] for e in entries if e["kind"] == "payment") == 90_000
+    # Nothing points at the proof that was deleted.
+    keys = run(
+        db.admin_url,
+        lambda c: c.fetch(
+            "SELECT proof_object_key FROM ledger_entry WHERE membership_id = $1",
+            uuid.UUID(kept["id"]),
+        ),
+    )
+    assert keys and all(row["proof_object_key"] is None for row in keys)
 
     # Nothing of it is edited again, and it is not anonymised twice.
     edited = client.patch(
@@ -462,3 +472,130 @@ def test_deleting_takes_the_leftovers_too(client: TestClient, db: Database, gym:
     for needle in needles(member):
         assert tables_holding(db, needle) == [], needle
     assert not stored(client, member.proof)
+
+
+# --- an anonymous record is the books' alone ---------------------------------------
+
+# Every operation that writes about the person in its path, with a body it would take
+# for anyone else. `test_every_write_to_a_person_is_listed` keeps this whole.
+WRITES: dict[tuple[str, str], Any] = {
+    ("PATCH", "/api/people/{person_id}"): {"name": "Otra Persona"},
+    ("DELETE", "/api/people/{person_id}"): {"reason": REASON},
+    ("POST", "/api/people/{person_id}/anonymise"): {"reason": REASON},
+    ("POST", "/api/people/{person_id}/leave"): {},
+    ("POST", "/api/people/{person_id}/return"): {},
+    ("POST", "/api/people/{person_id}/welcome"): None,
+    ("PUT", "/api/people/{person_id}/history"): {"member_since": "2020-01-01", "prior_classes": 3},
+    ("POST", "/api/people/{person_id}/history/payments"): {
+        "payments": [{"paid_on": "2024-03-01", "amount_clp": 30_000}]
+    },
+    ("POST", "/api/people/{person_id}/history/payments/{payment_id}/remove"): {"reason": "typo"},
+    ("PATCH", "/api/people/{person_id}/fields"): {"values": {}},
+    ("POST", "/api/people/{person_id}/requirements/{requirement_id}"): {"done_on": "2025-01-01"},
+    ("POST", "/api/people/{person_id}/dependents"): {"name": "Hijo Nuevo"},
+    ("DELETE", "/api/people/{person_id}/dependents/{dependent_id}"): None,
+    ("POST", "/api/people/{person_id}/grades"): {"rank_key": "white"},
+    ("POST", "/api/inactive/{person_id}/nudge"): None,
+    ("DELETE", "/api/staff/{person_id}"): None,
+    ("POST", "/api/staff/{person_id}/appointments"): {"title_id": str(uuid.uuid4())},
+    ("PATCH", "/api/staff/{person_id}/appointments/{appointment_id}"): {"ends_on": "2025-01-01"},
+    ("POST", "/api/staff/{person_id}/appointments/{appointment_id}/end"): None,
+    ("POST", "/api/me/consents/{dependent_id}"): {
+        "template_on": "2025-01-01",
+        "details_on": "2025-01-01",
+    },
+    ("DELETE", "/api/me/consents/{dependent_id}"): None,
+}
+
+
+def test_every_write_to_a_person_is_listed() -> None:
+    """A new operation on a person by id joins `WRITES`, so it is tried on a record."""
+    app = create_app(make_settings())
+    found = {
+        (method, route.path)
+        for route in routes(app)
+        if "{person_id}" in route.path or "{dependent_id}" in route.path
+        for method in (route.methods or set()) - {"GET", "HEAD"}
+    }
+    assert found == set(WRITES)
+
+
+def record_state(db: Database, gym: uuid.UUID, person: uuid.UUID) -> Any:
+    """The anonymous record, and how many rows of each table name it."""
+
+    async def read(conn: asyncpg.Connection) -> Any:
+        record = await conn.fetchrow(
+            "SELECT * FROM gym_person WHERE gym_id = $1 AND person_id = $2", gym, person
+        )
+        counts = {}
+        for table, column in await conn.fetch(
+            "SELECT c.relname, a.attname FROM pg_constraint k"
+            " JOIN pg_class c ON c.oid = k.conrelid"
+            " JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = ANY (k.conkey)"
+            " WHERE k.contype = 'f' AND k.confrelid = 'person'::regclass"
+        ):
+            counts[f"{table}.{column}"] = await conn.fetchval(
+                f"SELECT count(*) FROM {table} WHERE {column} = $1", person
+            )
+        return dict(record), counts
+
+    return run(db.admin_url, read)
+
+
+def anonymous_record(client: TestClient, db: Database, gym: uuid.UUID) -> uuid.UUID:
+    member = paid_member(client, db, gym)
+    assert anonymise(client, gym, member.id).status_code == 204
+    former = ok(client.get("/api/people?left=only", headers=as_gym(gym)))["items"]
+    [record] = [p for p in former if p["name"] == "Exalumno anonimizado"]
+    return uuid.UUID(record["id"])
+
+
+@pg
+def test_no_write_reaches_an_anonymous_record(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    record = anonymous_record(client, db, gym)
+    before = record_state(db, gym, record)
+    ids = {
+        "person_id": str(record),
+        "dependent_id": str(record),
+        "payment_id": str(uuid.uuid4()),
+        "requirement_id": str(uuid.uuid4()),
+        "appointment_id": str(uuid.uuid4()),
+    }
+    for (method, path), body in WRITES.items():
+        url = path.format(**ids)
+        response = client.request(method, url, json=body, headers=as_gym(gym))
+        assert 400 <= response.status_code < 500, (method, path, response.text)
+        assert response.status_code != 422, (method, path, response.text)
+    # The body's person too: a plan, a dependent's link, a plan of theirs brought back.
+    other = enrolled(client, gym, name="Marta")
+    for method, url, body in [
+        ("POST", "/api/memberships", {"person_id": str(record), "plan_id": plan(client, gym)}),
+        ("POST", f"/api/people/{other['id']}/dependents", {"person_id": str(record)}),
+        (
+            "POST",
+            f"/api/memberships/{memberships(client, gym, str(record))[0]['id']}/uncancel",
+            {"reason": "por error"},
+        ),
+    ]:
+        response = client.request(method, url, json=body, headers=as_gym(gym))
+        # Refused, for being anonymised or for having left, which they have.
+        assert response.status_code == 409, (method, url, response.text)
+    assert record_state(db, gym, record) == before
+
+
+@pg
+def test_the_database_refuses_a_write_onto_an_anonymous_record(
+    client: TestClient, db: Database, gym: uuid.UUID
+) -> None:
+    """Whatever writes it, as the owner the functions run as: the guard, not the API."""
+    record = anonymous_record(client, db, gym)
+    for sql in (
+        "UPDATE gym_person SET no_whatsapp = false WHERE person_id = $1 AND gym_id = $2",
+        "INSERT INTO mail_unsubscribe (gym_id, person_id) VALUES ($2, $1)",
+        "UPDATE membership SET discount_pct = 10 WHERE person_id = $1 AND gym_id = $2",
+    ):
+        with pytest.raises(asyncpg.PostgresError) as raised:
+            run(db.owner_url, in_gym(gym, sql, record, gym))
+        assert raised.value.sqlstate == "RK372", sql

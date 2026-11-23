@@ -1,0 +1,88 @@
+.my-data {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.my-data__back {
+  align-self: flex-start;
+}
+
+.my-data__note,
+.my-data__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.my-data__about {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.my-data__about p {
+  margin: 0;
+}
+
+.my-data__about-title {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Each kind of record, a row that opens: its title and how many it holds. */
+.my-data__part + .my-data__part {
+  border-top: 1px solid var(--color-border);
+}
+
+.my-data__summary {
+  padding: var(--space-3) var(--space-4);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.my-data__rows {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-3);
+  list-style: none;
+}
+
+.my-data__row {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) 0;
+  overflow-wrap: anywhere;
+}
+
+.my-data__row + .my-data__row {
+  border-top: 1px solid var(--color-border);
+}
+
+.my-data__row-detail {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.my-data__facts {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.my-data__fact {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) 2fr;
+  gap: var(--space-2);
+}
+
+.my-data__fact dt {
+  color: var(--color-text-muted);
+}
+
+.my-data__fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

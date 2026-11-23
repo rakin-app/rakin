@@ -17,8 +17,15 @@ paid could not be deleted. `anonymise_gym_person(person, reason)` is the way for
   person in a row of this gym moves with them, so no row of it leads to who they were,
   and a RUT another gym still has leads nowhere here: they may join again as anyone.
   Ledger notes the gym wrote on them (not a correction's reason, which the books keep)
-  and history payments' notes are cleared, and each proof key becomes
-  `anonimizado/<entry id>`, since a key names the uploader.
+  and history payments' notes are cleared, and so is each proof key: the file goes,
+  and a key names the uploader. So the month's "by members" and "proofs reviewed"
+  counts of a month not yet closed (`app.month_figures`) leave their payments out; a
+  closed month's are kept (`gym_month_figure`).
+- `anonymised_is_final` keeps an anonymous record the books' alone: its `gym_person`
+  row never changes, and no row naming it is added or changed in the tables that name
+  a gym's person (each composite foreign key to `gym_person`, and `grade_event`), but
+  by the anonymisation's own move. It raises `RK372` ("anonymised"), which the API
+  answers as a 409 (`app.main`).
 - What goes is the rest: custom fields, guardian links, unsubscribe, sign-in sessions,
   sibling groups, consent records, requirements, appointments, grades, freeze
   requests, the gym's messages to them (`message_log`), their idempotency keys, their
@@ -40,8 +47,8 @@ The proof files go after the answer, from the API (`delete_proofs` in `app.api.m
 
 A downgrade drops all of it; anonymous records stay, as people of their gym.
 
-Revision ID: 0098
-Revises: 0097
+Revision ID: 0099
+Revises: 0098
 Create Date: 2026-11-23
 
 """
@@ -53,8 +60,8 @@ from sqlalchemy import text
 
 from alembic import op
 
-revision: str = "0098"
-down_revision: str | Sequence[str] | None = "0097"
+revision: str = "0099"
+down_revision: str | Sequence[str] | None = "0098"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -273,6 +280,9 @@ BEGIN
     WHERE gym_id = gym AND person_id = $1 AND action IN {_in(HISTORY_ACTIONS)};
     PERFORM set_config('app.forget_person', '', true);
 
+    -- What the gym wrote on their history payments, before they move: once there,
+    -- `anonymised_is_final` refuses any other change.
+    UPDATE history_payment SET note = NULL WHERE gym_id = gym AND person_id = $1;
     -- The anonymous record, then every row of this gym naming them, moved onto it.
     INSERT INTO person (id, name) VALUES (anonymous, '');
     INSERT INTO gym_person (
@@ -304,8 +314,7 @@ BEGIN
     -- What the gym wrote about them, and the proof keys, which name the uploader.
     UPDATE ledger_entry e
     SET note = CASE WHEN e.purpose IS NULL THEN NULL ELSE e.note END,
-        proof_object_key = CASE WHEN e.proof_object_key IS NULL THEN NULL
-                                ELSE 'anonimizado/' || e.id END
+        proof_object_key = NULL
     WHERE e.id IN (
         SELECT x.id FROM ledger_entry x
         WHERE x.membership_id IN (
@@ -313,7 +322,6 @@ BEGIN
            OR x.extra_line_id IN (
                   SELECT id FROM extra_line WHERE gym_id = gym AND person_id = anonymous)
     ) AND ((e.purpose IS NULL AND e.note IS NOT NULL) OR e.proof_object_key IS NOT NULL);
-    UPDATE history_payment SET note = NULL WHERE gym_id = gym AND person_id = anonymous;
     DELETE FROM person_anonymisation p WHERE p.of_gym = gym AND p.anonymised_as = anonymous;
     DELETE FROM gym_person WHERE gym_id = gym AND person_id = $1;
 
@@ -325,6 +333,87 @@ BEGIN
 END
 $$
 """
+
+# The error an anonymous record's write raises, which the API answers as a 409.
+ANONYMISED_STATE = "RK372"
+
+FINAL = f"""
+CREATE FUNCTION anonymised_is_final()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE
+    col text;
+    who uuid;
+BEGIN
+    IF TG_TABLE_NAME = 'gym_person' THEN
+        IF OLD.anonymised_at IS NOT NULL THEN
+            RAISE EXCEPTION 'anonymised' USING ERRCODE = '{ANONYMISED_STATE}';
+        END IF;
+        RETURN NEW;
+    END IF;
+    -- The anonymisation's own move onto the record.
+    IF TG_OP = 'UPDATE' THEN
+        IF public.anonymising(to_jsonb(OLD), to_jsonb(NEW), ARRAY[]::text[]) THEN
+            RETURN NEW;
+        END IF;
+    END IF;
+    FOREACH col IN ARRAY TG_ARGV LOOP
+        who := (to_jsonb(NEW) ->> col)::uuid;
+        IF who IS NOT NULL AND EXISTS (
+            SELECT FROM gym_person g
+            WHERE g.gym_id = NEW.gym_id AND g.person_id = who AND g.anonymised_at IS NOT NULL
+        ) THEN
+            RAISE EXCEPTION 'anonymised' USING ERRCODE = '{ANONYMISED_STATE}';
+        END IF;
+    END LOOP;
+    RETURN NEW;
+END
+$$
+"""
+
+# Every column naming a gym's person: each composite foreign key to `gym_person`, and
+# `grade_event`'s, which names the person alone (0054).
+NAMING = """
+    SELECT c.relname, array_agg(a.attname ORDER BY a.attname)
+    FROM pg_constraint k
+    JOIN pg_class c ON c.oid = k.conrelid
+    JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[2]
+    WHERE k.contype = 'f' AND k.confrelid = 'gym_person'::regclass
+      AND cardinality(k.conkey) = 2
+    GROUP BY c.relname
+    ORDER BY 1
+"""
+
+
+def _named_by() -> dict[str, list[str]]:
+    rows = op.get_bind().execute(text(NAMING)).all()
+    found = {table: list(columns) for table, columns in rows}
+    found["grade_event"] = ["person_id"]
+    return found
+
+
+def _finals(*, create: bool) -> None:
+    if create:
+        op.execute(FINAL)
+        op.execute(
+            "CREATE TRIGGER gym_person_anonymised_is_final BEFORE UPDATE ON gym_person"
+            " FOR EACH ROW EXECUTE FUNCTION anonymised_is_final()"
+        )
+    else:
+        op.execute("DROP TRIGGER gym_person_anonymised_is_final ON gym_person")
+    for table, columns in _named_by().items():
+        name = f"{table}_anonymised_is_final"
+        if create:
+            args = ", ".join(f"'{c}'" for c in columns)
+            op.execute(
+                f"CREATE TRIGGER {name} BEFORE INSERT OR UPDATE ON {table}"
+                f" FOR EACH ROW EXECUTE FUNCTION anonymised_is_final({args})"
+            )
+        else:
+            op.execute(f"DROP TRIGGER {name} ON {table}")
+    if not create:
+        op.execute("DROP FUNCTION anonymised_is_final()")
+
 
 FORGET = "forget_gym_person(uuid, text)"
 # 0071's `forget_gym_person`, as it stands: what it deletes last, and its new tail.
@@ -439,9 +528,11 @@ def upgrade() -> None:
     for signature in ("anonymise_refusal(uuid)", "anonymise_gym_person(uuid, text)"):
         op.execute(f"REVOKE ALL ON FUNCTION {signature} FROM PUBLIC")
         op.execute(f"GRANT EXECUTE ON FUNCTION {signature} TO {APP_ROLE}")
+    _finals(create=True)
 
 
 def downgrade() -> None:
+    _finals(create=False)
     op.execute("DROP FUNCTION anonymise_gym_person(uuid, text)")
     op.execute("DROP FUNCTION anonymise_refusal(uuid)")
     _forget(leftovers=False)

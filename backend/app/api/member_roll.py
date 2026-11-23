@@ -41,7 +41,7 @@ go with them, and so does the global person when no other gym knows them (#372).
 
 `POST .../anonymise` is Anonimizar (#372), for someone the gym kept money from, once
 they are dados de baja and owe nothing: the books stay on an anonymous record, and
-everything else of theirs goes as for a deletion (`anonymise_gym_person`, 0098).
+everything else of theirs goes as for a deletion (`anonymise_gym_person`, 0099).
 `GET .../anonymisation` says whether it would, and if not why.
 
 Adding, leaving, returning and the welcome are for whoever manages the members
@@ -280,6 +280,7 @@ async def leave(
     """Dar de baja from `left_on`, and why if said: every membership they hold ends now,
     so nothing more is billed, and what is owed stays owed. A 409 if they have already
     left."""
+    await refuse_anonymised(session, person_id)
     record = (await session.execute(LOCK_LEFT, {"id": person_id})).one_or_none()
     if record is None:
         raise NOT_FOUND
@@ -392,6 +393,7 @@ async def send_welcome(
     """Send their welcome now and answer how it went. Nothing here waits on this
     transaction, so it goes before the answer, not after. A 422 `no_email` with no
     address to send it to; a 409 for someone who has left."""
+    await refuse_anonymised(session, person_id)
     left_on = await session.scalar(LOCK_RECORD, {"id": person_id})
     if left_on is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "has left the gym")
@@ -526,6 +528,9 @@ async def forget(
         raise HTTPException(
             status.HTTP_409_CONFLICT, ForgetConflict(code=code, amount_clp=amount).model_dump()
         )
+    # After the answer: `OwnerSession` is a `TenantSession` of `scope="function"`, which
+    # commits when this returns and before the response is sent, and background tasks
+    # run only after it. So the rows naming the files are gone before the files are.
     background.add_task(delete_proofs, integrations.blob_store, proofs)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -558,7 +563,7 @@ async def anonymise(
     be deleted. The books stay, on an anonymous record ("Exalumno anonimizado") that
     nothing leads from them to; everything else of theirs here goes, their proof files
     after the answer, and the gym's log keeps who did it, when and why
-    (`anonymise_gym_person`, 0098). Refused, writing nothing, for `anonymise_refusal`'s
+    (`anonymise_gym_person`, 0099). Refused, writing nothing, for `anonymise_refusal`'s
     reasons."""
     proofs = await their_proofs(session, tenant, person_id)
     code = await session.scalar(
@@ -572,5 +577,8 @@ async def anonymise(
         raise HTTPException(
             status.HTTP_409_CONFLICT, AnonymiseConflict(code=code, amount_clp=amount).model_dump()
         )
+    # After the answer: `OwnerSession` is a `TenantSession` of `scope="function"`, which
+    # commits when this returns and before the response is sent, and background tasks
+    # run only after it. So the rows naming the files are gone before the files are.
     background.add_task(delete_proofs, integrations.blob_store, proofs)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

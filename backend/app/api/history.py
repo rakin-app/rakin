@@ -280,6 +280,7 @@ async def add_history_payments(
     have been paid twice. Under the person's lock, so their first plan is read once."""
     if (await session.execute(LOCK_PERSON, {"id": person_id})).one_or_none() is None:
         raise NOT_FOUND
+    await refuse_anonymised(session, person_id)
     today = await _today(session, tenant)
     for payment in body.payments:
         refuse_outside_history("paid_on", payment.paid_on, today)
@@ -302,6 +303,7 @@ async def remove_history_payment(
 ) -> HistoryPaymentsRead:
     """Eliminar, for a typo: the payment goes, and a `history_removed` row keeps the
     whole of it and the reason, in the same transaction."""
+    await refuse_anonymised(session, person_id)
     row = (
         await session.execute(DELETE_PAYMENT, {"payment": payment_id, "person": person_id})
     ).one_or_none()
