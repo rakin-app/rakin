@@ -1321,6 +1321,8 @@ export const es = {
       },
       // The ficha of an anonymous record (#372), in place of its ways out.
       anonymised: 'Ficha anonimizada: sus datos se borraron y solo quedan sus planes y pagos. No se puede editar.',
+      // A write the API refused with 409 `anonymised` (#581): retrying will not help.
+      anonymisedRefused: 'Esta ficha está anonimizada: no se puede cambiar.',
       // What an earlier plan, lapsed say, still owes once a new one started (#249).
       earlierDebt: 'Deuda anterior',
       earlierDebtLine: (plan: string, pending: string) => `${plan} · ${pending}`,

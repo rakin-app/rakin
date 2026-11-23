@@ -3359,7 +3359,7 @@ describe('the record and the ways out (#157)', () => {
     expect(calls.filter((c) => c.method === 'DELETE')).toEqual([])
   })
 
-  it('anonimizar asks to dar de baja first while they train (#372)', async () => {
+  it('anonimizar asks to dar de baja first while they train, and its Dar de baja opens the form in view (#372, #581)', async () => {
     stubApi({
       extra: (path) => {
         if (path === '/api/people/felipe/deletion') return { body: { refused: 'payment', amount_clp: 45000 } }
@@ -3371,9 +3371,135 @@ describe('the record and the ways out (#157)', () => {
 
     await userEvent.click(within(await actions()).getByRole('button', { name: copy.remove }))
     expect(await screen.findByText(copy.anonymiseForm.refused.running())).toBeInTheDocument()
-    const offered = within(await actions()).getAllByRole('button', { name: copy.leave })
-    await userEvent.click(offered.at(-1)!)
-    expect(screen.getByRole('form', { name: copy.leaveForm.title })).toBeInTheDocument()
+    const alert = within(await actions()).getByRole('alert')
+    // jsdom has no scrollIntoView: one for this test alone.
+    const scrolled = vi.fn()
+    Element.prototype.scrollIntoView = scrolled
+    try {
+      await userEvent.click(within(alert).getByRole('button', { name: copy.leave }))
+      // Its Cancelar and Dar de baja sit where the alert's did: brought into view, focused.
+      const form = screen.getByRole('form', { name: copy.leaveForm.title })
+      expect(scrolled).toHaveBeenCalledOnce()
+      expect(scrolled.mock.contexts[0]).toBe(form)
+      expect(within(form).getByLabelText(copy.leaveForm.on)).toHaveFocus()
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    }
+  })
+
+  it('an anonymised ficha is read-only in every section, its books as they are (#581)', async () => {
+    const requirement: PersonRequirement = {
+      id: 'r-waiver',
+      name: 'Declaración de riesgos firmada',
+      valid_months: null,
+      sensitive: false,
+      state: 'pending',
+      done_on: null,
+      expires_on: null,
+      note: null,
+      recorded_at: null,
+    }
+    const past: HistoryPayment = {
+      id: 'h-mar',
+      paid_on: '2023-03-05',
+      amount_clp: 25000,
+      method: 'transfer',
+      covers_month: '2023-03-01',
+      plan_name: 'Mensual 3x semana',
+      note: null,
+      source: 'manual',
+      import_name: null,
+      created_by_name: 'Martín',
+      created_at: '2026-11-14T15:00:00Z',
+    }
+    stubApi({
+      person: {
+        body: {
+          ...FELIPE,
+          name: 'Exalumno anonimizado',
+          phone: null,
+          left_on: '2026-10-01',
+          anonymised: true,
+          // What the API would ask of anyone else: an anonymous record is never asked.
+          missing_phone: true,
+          missing_rut: true,
+          no_whatsapp: true,
+        },
+      },
+      memberships: [{ ...MONTHLY, status: 'cancelled' }],
+      extra: (path, method) => {
+        if (path === '/api/people/felipe/requirements' && method === 'GET') return { body: [requirement] }
+        if (path === '/api/people/felipe/history/payments' && method === 'GET') {
+          return { body: { plan_from: null, years: [{ year: 2023, count: 1, total_clp: 25000, payments: [past] }] } }
+        }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    // The books stay: the plan, its Libro's lines and the history's payments, to read.
+    const payment = await screen.findByRole('region', { name: copy.paymentLabel })
+    expect(within(payment).getByText(new RegExp(MONTHLY.plan_name))).toBeInTheDocument()
+    const ledger = await screen.findByRole('region', { name: copy.ledger.title })
+    expect(within(ledger).getAllByRole('listitem').length).toBeGreaterThan(0)
+    const requirements = await screen.findByRole('region', { name: copy.requirements.title })
+    expect(within(requirements).getByText('Declaración de riesgos firmada')).toBeInTheDocument()
+    const family = await screen.findByRole('region', { name: es.admin.family.toggle })
+    expect(await within(family).findByText('Tomás Díaz')).toBeInTheDocument()
+    const history = screen.getByRole('region', { name: copy.history.title })
+    await userEvent.click(await within(history).findByRole('button', { name: /2023/ }))
+    expect(within(history).getByText(copy.history.line.month('2023-03-01'))).toBeInTheDocument()
+
+    // Nothing to press but what only changes the view: a year opened, time shown by month.
+    const views = [es.matTime.theirs, es.tagHours.theirs].map((name) => screen.getByRole('region', { name }))
+    const pressable = within(screen.getByRole('main'))
+      .getAllByRole('button')
+      .filter((button) => !views.some((view) => view.contains(button)))
+      .map((button) => button.textContent)
+    expect(pressable).toEqual([`${copy.history.year(2023, 1)}${es.common.clp(25000)}`])
+    // And no hint that asks for data it will never have.
+    expect(screen.queryByText(copy.missingPhone)).not.toBeInTheDocument()
+    expect(screen.queryByText(copy.missingRut)).not.toBeInTheDocument()
+    expect(screen.queryByText(copy.noWhatsapp)).not.toBeInTheDocument()
+  })
+
+  it('a write refused as anonymised says so, not "try again" (#581)', async () => {
+    stubApi({
+      extra: (path, method) => {
+        if (path === '/api/people/felipe/requirements' && method === 'GET') {
+          return {
+            body: [
+              {
+                id: 'r-waiver',
+                name: 'Declaración de riesgos firmada',
+                valid_months: null,
+                sensitive: false,
+                state: 'pending',
+                done_on: null,
+                expires_on: null,
+                note: null,
+                recorded_at: null,
+              },
+            ],
+          }
+        }
+        if (path === '/api/people/felipe/requirements/r-waiver' && method === 'POST') {
+          return { status: 409, body: { detail: 'anonymised' } }
+        }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    const card = await screen.findByRole('region', { name: copy.requirements.title })
+    await userEvent.click(
+      await within(card).findByRole('button', { name: copy.requirements.recordLabel('Declaración de riesgos firmada') }),
+    )
+    const form = within(card).getByRole('form', { name: copy.requirements.form.title('Declaración de riesgos firmada') })
+    await userEvent.click(within(form).getByRole('button', { name: copy.requirements.form.submit }))
+
+    expect(await within(form).findByText(copy.anonymisedRefused)).toBeInTheDocument()
+    expect(within(form).queryByText(copy.requirements.form.failed)).not.toBeInTheDocument()
   })
 
   it('an anonymised ficha has no ways out and no edit (#372)', async () => {

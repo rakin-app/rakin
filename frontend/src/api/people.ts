@@ -317,6 +317,13 @@ export function anonymiseRefused(error: unknown): Anonymisation | null {
   return { refused: code, amount_clp: typeof detail?.amount_clp === 'number' ? detail.amount_clp : null }
 }
 
+/** Whether the API refused a write because its person is an anonymous record (#581):
+ * a 409 `anonymised`, from the API's own check or the database's guard. */
+export function refusedAnonymised(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 409) return false
+  return (error.body as { detail?: unknown } | undefined)?.detail === 'anonymised'
+}
+
 /** Someone in the gym already has the RUT, or the email: who, to
  * open them instead. */
 export type Duplicate = { code: 'rut_in_gym' | 'email_in_gym'; person_id: string }
