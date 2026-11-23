@@ -5159,6 +5159,10 @@ export const es = {
     changesOf: (title: string, version: string) => `${title}, versión ${version}`,
     texts: 'Los términos completos',
     version: (version: string) => `Versión ${version}`,
+    // Beside each closed text: it opens to be read.
+    read: 'Leer',
+    // In the boxes, in the gym's name until its razón social is typed (#570).
+    thePlace: () => w.thePlace,
     // Opens the texts in a page of their own, to save or print before accepting.
     print: 'Descargar o imprimir',
     printTitle: (gym: string) => `Términos de Rakin para ${gym}`,

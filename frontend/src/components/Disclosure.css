@@ -1,0 +1,77 @@
+/* `Disclosure` (#570): a card whose title row opens it. The row carries the card's
+   padding, so a closed one is that row alone, with no empty space under it. */
+.card.disclosure {
+  gap: 0;
+  padding: 0;
+}
+
+.disclosure__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--control-height);
+  padding: var(--space-4) var(--space-5);
+  border-radius: inherit;
+  cursor: pointer;
+  list-style: none;
+}
+
+.disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure__summary:hover .disclosure__chevron,
+.disclosure__summary:hover .disclosure__cue {
+  color: var(--color-heading);
+}
+
+.disclosure__head {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+}
+
+.disclosure__title {
+  color: var(--color-heading);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.disclosure__meta {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.disclosure__cue {
+  flex: none;
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.disclosure[open] .disclosure__cue {
+  display: none;
+}
+
+.disclosure__chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--color-text-muted);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.disclosure[open] .disclosure__chevron {
+  transform: rotate(180deg);
+}
+
+.disclosure__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 0 var(--space-5) var(--space-5);
+}

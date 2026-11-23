@@ -44,3 +44,9 @@
   margin: 0 auto;
   padding: var(--space-4) var(--space-4) calc(var(--space-8) + env(safe-area-inset-bottom));
 }
+
+/* A screen's header on the same left edge as its buttons and table (#570): the main
+   column has the padding already, as a `PageContainer` does. */
+.platform-main > .page-header {
+  padding-inline: 0;
+}

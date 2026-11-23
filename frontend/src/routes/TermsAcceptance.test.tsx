@@ -8,7 +8,7 @@ import { App } from '../App'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { asRole } from '../test/access'
-import { validRut } from './TermsAcceptance'
+import { declarationOf, demoted, validRut } from './TermsAcceptance'
 
 const copy = es.terms
 
@@ -59,7 +59,7 @@ const PAGE: TermsPage = {
       key: 'service',
       title: 'Términos de servicio',
       version: '2026-11-20',
-      html: '<p>Entre Rakin y <span class="legal-blank" data-blank="legal_name">[Razón social del gimnasio]</span>.</p>',
+      html: '<h1 id="ts-terminos">Términos de servicio</h1><p>Entre Rakin y <span class="legal-blank" data-blank="legal_name">[Razón social del gimnasio]</span>.</p>',
       changes: [],
     },
     {
@@ -113,11 +113,16 @@ describe('the terms gate (#499)', () => {
     expect(screen.queryByRole('navigation', { name: es.nav.label })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: es.signOut.label })).toBeInTheDocument()
     // Both texts, before the boxes, with a way to keep them.
-    expect(screen.getByText('Términos de servicio')).toBeInTheDocument()
+    expect(screen.getByText('Términos de servicio', { selector: 'summary *' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: copy.print })).toBeInTheDocument()
 
     const button = screen.getByRole('button', { name: copy.accept })
     expect(button).toBeDisabled()
+    // Until the razón social is typed, the boxes accept in the gym's name, never in a
+    // bracketed label (#570).
+    const boxes = screen.getAllByRole('checkbox').map((box) => box.closest('label')!.textContent)
+    expect(boxes[0]).toContain(`en nombre de ${copy.thePlace()}, y declaro`)
+    for (const text of boxes) expect(text).not.toMatch(/\[|\]/)
     await fillForm()
     // The blanks in the text show what is typed, as the server will render them.
     expect(document.querySelector('[data-blank="legal_name"]')!.textContent).toBe('Norte SpA')
@@ -146,6 +151,31 @@ describe('the terms gate (#499)', () => {
       accept_service: true,
       accept_processor: true,
     })
+  })
+
+  it('shows each text as a card that opens to be read, under the page’s one h1 (#570)', async () => {
+    stubApi((call) => {
+      if (call.path === '/api/me/role') return { status: 200, body: me('owner', 'pending') }
+      if (call.path === '/api/terms') return { status: 200, body: PAGE }
+      return undefined
+    })
+    renderAt('/admin')
+
+    await screen.findByLabelText(copy.legalName)
+    const titles = [...document.querySelectorAll('h1')].map((h) => h.textContent)
+    expect(titles).toEqual([copy.title])
+    // The texts' own headings, one level under the section's h2 and more.
+    expect(document.querySelector('.legal h3')!.textContent).toBe('Términos de servicio')
+    expect(document.querySelector('.legal h4')!.textContent).toBe('Anexo A')
+    const summaries = [...document.querySelectorAll('summary')]
+    expect(summaries.map((s) => s.textContent)).toEqual([
+      `Términos de servicio${copy.version('2026-11-20')}${copy.read}`,
+      `Términos de encargo${copy.version('2026-11-20')}${copy.read}`,
+    ])
+    const service = summaries[0]!.closest('details')!
+    expect(service.open).toBe(false)
+    await userEvent.click(summaries[0]!)
+    expect(service.open).toBe(true)
   })
 
   it('holds the button until the form is complete, and says what is missing', async () => {
@@ -234,5 +264,29 @@ describe('validRut', () => {
     expect(validRut('7654321-6')).toBe(true)
     expect(validRut('76.123.456-1')).toBe(false)
     expect(validRut('hola')).toBe(false)
+  })
+})
+
+describe('declarationOf', () => {
+  const service = PAGE.declarations.service
+  it('accepts in the razón social once it is typed', () => {
+    expect(declarationOf(service, 'Norte SpA')).toBe(
+      'Acepto los Términos de servicio en nombre de Norte SpA, y declaro que puedo representarla.',
+    )
+  })
+
+  it('accepts in the gym’s name until then, with no bracketed label', () => {
+    expect(declarationOf(service, null)).toBe(
+      `Acepto los Términos de servicio en nombre de ${copy.thePlace()}, y declaro que puedo representarla.`,
+    )
+    expect(declarationOf(service, null)).not.toMatch(/\[/)
+  })
+})
+
+describe('demoted', () => {
+  it('moves every heading down, to h6 at most, and leaves the rest alone', () => {
+    expect(demoted('<h1 id="a">A</h1><h2>B</h2><h5>C</h5><hr><p>h1</p>', 2)).toBe(
+      '<h3 id="a">A</h3><h4>B</h4><h6>C</h6><hr><p>h1</p>',
+    )
   })
 })

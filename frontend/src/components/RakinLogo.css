@@ -10,6 +10,8 @@
   font-weight: var(--font-weight-display);
   letter-spacing: var(--tracking-title);
   line-height: 1;
+  /* The wordmark is one word: its square never drops to a line of its own (#570). */
+  white-space: nowrap;
 }
 
 .rakin-logo__symbol {

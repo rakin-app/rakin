@@ -219,15 +219,7 @@
 }
 
 .expenses__categories {
-  display: grid;
-  gap: var(--space-3);
   max-width: 64rem;
-}
-
-.expenses__categories-title {
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
 }
 
 .expenses__subheading {

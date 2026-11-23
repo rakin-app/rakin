@@ -91,7 +91,8 @@ export function AdminLayout() {
   return <AdminShell />
 }
 
-/** The admin's bar with no nav, over the terms' page: the gym, and a way to sign out. */
+/** The admin's bar with no nav, over the terms' page: the gym, and a way to sign out,
+ * on a phone an icon whose name is still "Cerrar sesión" (#570), so the bar keeps to a line. */
 function TermsGate({ children }: { children: ReactNode }) {
   const gym = useGymName()
   const logo = useQuery(myselfQuery()).data?.gym_logo
@@ -110,7 +111,7 @@ function TermsGate({ children }: { children: ReactNode }) {
         )}
         <button type="button" className="admin-top__sign-out" disabled={signOut.isPending} onClick={() => signOut.mutate()}>
           <SignOutIcon />
-          <span>{signOut.isPending ? t.signOut.working : t.signOut.label}</span>
+          <span className="admin-top__sign-out-label">{signOut.isPending ? t.signOut.working : t.signOut.label}</span>
         </button>
       </header>
       <main className="admin-main admin-main--gate">

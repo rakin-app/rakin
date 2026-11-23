@@ -28,6 +28,7 @@ import { myAccessQuery, readsExpenses, readsLedger, writesExpenses } from '../ap
 import { proofProblem } from '../api/proofs'
 import { useSubmit } from '../api/submit'
 import { Button, buttonClass } from '../components/Button'
+import { Disclosure } from '../components/Disclosure'
 import { Banner, Card, cardClass, PlainList } from '../components/Card'
 import { cx } from '../components/classNames'
 import { Field, FieldError, Input, Select, Textarea } from '../components/Field'
@@ -735,8 +736,7 @@ function Categories({ categories }: { categories: ExpenseCategory[] }) {
   }
 
   return (
-    <details className={cardClass({}, 'expenses__categories')}>
-      <summary className="expenses__categories-title">{words.title}</summary>
+    <Disclosure className="expenses__categories" title={words.title}>
       <p className="expenses__meta">{words.intro}</p>
       {failure && <Banner tone="error">{failure}</Banner>}
       <PlainList className="expenses__category-list">
@@ -825,7 +825,7 @@ function Categories({ categories }: { categories: ExpenseCategory[] }) {
           </PlainList>
         </>
       )}
-    </details>
+    </Disclosure>
   )
 }
 
