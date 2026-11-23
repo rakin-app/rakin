@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query'
+import { queryOptions, type QueryClient } from '@tanstack/react-query'
 import { apiFetch } from './client'
 
 export const PLAN_KINDS = ['monthly', 'prepaid', 'fixed_period', 'credits', 'dropin', 'trial'] as const
@@ -55,6 +55,21 @@ export const plansQuery = queryOptions({
   queryKey: ['plans'],
   queryFn: () => apiFetch<Plan[]>('/api/plans'),
 })
+
+/** A plan the API has just answered a save with, put in the list at once (#558), then
+ * every plan read again: the row says what was saved as the notice does, rather than
+ * its old values until the refetch lands, and the refetch puts it back in the API's
+ * order. Before the form closes, so both show in the same render. */
+export function savedPlan(queryClient: QueryClient, plan: Plan): Promise<void> {
+  queryClient.setQueryData<Plan[]>(plansQuery.queryKey, (list) =>
+    list === undefined
+      ? list
+      : list.some((p) => p.id === plan.id)
+        ? list.map((p) => (p.id === plan.id ? plan : p))
+        : [...list, plan],
+  )
+  return queryClient.invalidateQueries({ queryKey: plansQuery.queryKey })
+}
 
 export function createPlan(body: PlanFields & { kind: PlanKind }): Promise<Plan> {
   return apiFetch<Plan>('/api/plans', { method: 'POST', body: JSON.stringify(body) })

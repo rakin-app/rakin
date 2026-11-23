@@ -10,6 +10,7 @@ import {
   PLAN_KINDS,
   planMembershipsQuery,
   plansQuery,
+  savedPlan,
   updatePlan,
   type Anchor,
   type AnchorMoves as Quote,
@@ -222,8 +223,9 @@ function PlanForm({
     offline: 'refuse',
     mutationFn: () => updatePlan(plan!.id, { active: !plan!.active }),
     onSuccess: async (answer) => {
+      const saved = savedPlan(queryClient, answer)
       onDone(answer.active ? copy.reactivated(answer.name) : copy.deactivated(answer.name))
-      await queryClient.invalidateQueries({ queryKey: plansQuery.queryKey })
+      await saved
     },
   })
   // "Duplicar para el próximo período" open in place of the form (#351).
@@ -257,8 +259,9 @@ function PlanForm({
         ? updatePlan(plan.id, moving ? { ...fields(changed), move_members: true } : fields(changed))
         : createPlan({ kind, ...fields(['name', 'program_id', ...params]) }),
     onSuccess: async (answer) => {
+      const saved = savedPlan(queryClient, answer)
       onDone(plan ? (moving ? copy.savedMoved(answer.name, moving) : copy.saved(answer.name)) : copy.created(answer.name))
-      await queryClient.invalidateQueries({ queryKey: plansQuery.queryKey })
+      await saved
       // The members' fichas say the day they move to.
       if (moving) await queryClient.invalidateQueries({ queryKey: ['people'] })
     },
@@ -574,8 +577,9 @@ function NextPeriodForm({
         membership_ids: (members.data ?? []).map((m) => m.membership_id).filter((id) => !staying.has(id)),
       }),
     onSuccess: async (answer) => {
+      const saved = savedPlan(queryClient, answer.plan)
       onDone(words.done(answer.plan.name, answer.moved))
-      await queryClient.invalidateQueries({ queryKey: plansQuery.queryKey })
+      await saved
     },
   })
   const errors = validationErrors(save.error)
