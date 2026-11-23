@@ -45,20 +45,6 @@
   margin-top: var(--space-3);
 }
 
-.terms__summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-  min-height: var(--control-height);
-  cursor: pointer;
-}
-
-.terms__summary-title {
-  font-weight: var(--font-weight-semibold);
-}
-
 .terms__contact {
   display: grid;
   gap: var(--space-3);
@@ -95,17 +81,20 @@
   line-height: 1.6;
 }
 
-.legal h1 {
-  font-size: var(--text-xl);
-  margin: var(--space-4) 0 var(--space-3);
+/* Their headings sit under the page's h1 and the section's h2 (#570): a text's own
+   title is an h3 here, its sections h4 and h5. */
+.legal h3 {
+  font-size: var(--text-lg);
+  margin: var(--space-2) 0 var(--space-3);
 }
 
-.legal h2 {
-  font-size: var(--text-lg);
+.legal h4 {
+  font-size: var(--text-base);
   margin: var(--space-5) 0 var(--space-2);
 }
 
-.legal h3 {
+.legal h5,
+.legal h6 {
   font-size: var(--text-base);
   margin: var(--space-4) 0 var(--space-2);
 }

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSubmit } from '../api/submit'
 import {
   acceptTerms,
@@ -16,6 +16,7 @@ import {
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Banner, cardClass, CheckRow, Section, SectionTitle } from '../components/Card'
+import { Disclosure } from '../components/Disclosure'
 import { Field, Input } from '../components/Field'
 import { PageContainer } from '../components/Layout'
 import { useFocusFirstInvalid } from '../components/focusInvalid'
@@ -196,8 +197,7 @@ function AcceptanceForm({ page }: { page: TermsPage }) {
 
   const service = page.documents.find((d) => d.key === 'service')!
   const processor = page.documents.find((d) => d.key === 'processor')!
-  const legalName = blanks.legal_name ?? `[${copy.legalName}]`
-  const declaration = (key: TermsKey) => page.declarations[key].replace('{legal_name}', legalName)
+  const declaration = (key: TermsKey) => declarationOf(page.declarations[key], blanks.legal_name ?? null)
   const withChanges = page.documents.filter((d) => d.changes.length > 0)
 
   const submit = (event: FormEvent) => {
@@ -227,7 +227,7 @@ function AcceptanceForm({ page }: { page: TermsPage }) {
                 <div key={`${document.key}-${change.version}`} className="terms__change">
                   <h3 className="terms__change-title">{copy.changesOf(document.title, change.version)}</h3>
                   {/* Built by the server from docs/legal/, every value escaped (`app.legal.terms`). */}
-                  <div className="legal" dangerouslySetInnerHTML={{ __html: change.html }} />
+                  <div className="legal" dangerouslySetInnerHTML={{ __html: demoted(change.html, 3) }} />
                 </div>
               )),
             )}
@@ -357,19 +357,31 @@ function apiRefusal(errors: Record<string, string>, key: string): string | undef
 /** One text, collapsed under its title, its blanks showing what the titular types. */
 function LegalText({ document, blanks }: { document: TermsDocument; blanks: Record<string, string | null> }) {
   const body = useRef<HTMLDivElement>(null)
+  // Under the page's h1 and the section's h2, the text's own h1 is an h3 (#570).
+  const html = useMemo(() => demoted(document.html, 2), [document.html])
   useEffect(() => {
     fillBlanks(body.current, blanks)
   })
   return (
-    <details className={cardClass({}, 'terms__text')}>
-      <summary className="terms__summary">
-        <span className="terms__summary-title">{document.title}</span>
-        <span className="terms__note">{copy.version(document.version)}</span>
-      </summary>
+    <Disclosure className="terms__text" title={document.title} meta={copy.version(document.version)} cue={copy.read}>
       {/* Built by the server from docs/legal/, every value escaped (`app.legal.terms`). */}
-      <div ref={body} className="legal" dangerouslySetInnerHTML={{ __html: document.html }} />
-    </details>
+      <div ref={body} className="legal" dangerouslySetInnerHTML={{ __html: html }} />
+    </Disclosure>
   )
+}
+
+/**
+ * What a box says, in the gym's name as the titular types it, or "la academia" until
+ * they do (#570): never the blank's label in brackets, which reads as a template's.
+ */
+export function declarationOf(declaration: string, legalName: string | null): string {
+  return declaration.replace('{legal_name}', legalName ?? copy.thePlace())
+}
+
+/** `html` with each heading `by` levels down, to h6 at most: the server's text, whose
+ * every value is escaped, so a `<h1` in it is only ever a tag. */
+export function demoted(html: string, by: number): string {
+  return html.replace(/<(\/?)h([1-6])\b/g, (_, slash: string, level: string) => `<${slash}h${Math.min(6, Number(level) + by)}`)
 }
 
 /** Each blank under `root` shows its field's value, as text, or its label while empty:

@@ -20,7 +20,8 @@ import {
 } from '../api/expenses'
 import { useSubmit } from '../api/submit'
 import { Button } from '../components/Button'
-import { Banner, Card, cardClass, CheckRow, PlainList } from '../components/Card'
+import { Disclosure } from '../components/Disclosure'
+import { Banner, Card, CheckRow, PlainList } from '../components/Card'
 import { cx } from '../components/classNames'
 import { Field, Input, Select } from '../components/Field'
 import { t } from '../i18n/es'
@@ -218,8 +219,7 @@ export function RecurringTemplates({ categories }: { categories: ExpenseCategory
   const list = templates.data ?? []
 
   return (
-    <details className={cardClass({}, 'recurring')}>
-      <summary className="recurring__title">{words.title}</summary>
+    <Disclosure className="recurring" title={words.title}>
       <p className="recurring__meta">{words.intro}</p>
       {pause.error && <Banner tone="error">{words.failed}</Banner>}
       {templates.isSuccess && list.length === 0 && <p className="recurring__meta">{words.empty}</p>}
@@ -268,7 +268,7 @@ export function RecurringTemplates({ categories }: { categories: ExpenseCategory
           </Button>
         </div>
       )}
-    </details>
+    </Disclosure>
   )
 }
 
