@@ -170,6 +170,16 @@ WhatsApp. For each, it gives the counting rule and what the rule over- and under
 It also explains why email open tracking stays off, and how the summary is built from
 counts alone. Its build tickets are #505 to #508.
 
+## Onboarding a new gym (#566)
+
+[onboarding.md](onboarding.md) walks a fresh gym through "Configura tu academia" as a
+first-time owner and finds where it stalls: Horario missing from the list, steps in an
+order that does not work, "clase" meaning three things, plan kinds and two plans at once
+unexplained, and invites that never say they are pending. It recommends no tour: a
+better first-steps list plus help on the screens themselves (a line in each empty state,
+a closed "¿Qué es esto?" beside the hard choices), with the copy for each screen. Its
+build tickets are #573 to #577.
+
 ## Contrast (WCAG 2.1 AA)
 
 `frontend/src/styles/tokens.test.ts` checks every pair in every theme.
