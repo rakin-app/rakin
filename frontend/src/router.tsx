@@ -29,6 +29,7 @@ import { ExtraCharges } from './routes/ExtraCharges'
 import { ClassTimer } from './routes/ClassTimer'
 import { Join } from './routes/Join'
 import { MeHome } from './routes/MeHome'
+import { MyData } from './routes/MyData'
 import { MemberDetail } from './routes/MemberDetail'
 import { MemberImport } from './routes/MemberImport'
 import { NewMember } from './routes/NewMember'
@@ -342,6 +343,13 @@ const meHomeRoute = createRoute({
   component: MeHome,
 })
 
+// "Mis datos" (#371): everything the gym holds on the student, with its download.
+const meDataRoute = createRoute({
+  getParentRoute: () => meRoute,
+  path: 'datos',
+  component: MyData,
+})
+
 /**
  * The platform's panel (#436) is the base host's alone: on a gym's own address it is not
  * found, as the API answers there. Whether this is a gym's address is asked once; if
@@ -430,7 +438,7 @@ const routeTree = rootRoute.addChildren([
     adminExtraChargeRoute,
     adminSettingsRoute.addChildren([adminSettingsIndexRoute, ...adminSettingsSectionRoutes]),
   ]),
-  meRoute.addChildren([meHomeRoute]),
+  meRoute.addChildren([meHomeRoute, meDataRoute]),
   platformSignInRoute,
   platformRoute.addChildren([platformGymsRoute, platformNewGymRoute, platformGymRoute]),
 ])

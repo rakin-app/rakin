@@ -71,8 +71,8 @@ Gap: #376.
 
 | Part | Status | Evidence |
 | --- | --- | --- |
-| The student page shows all stored data | **missing** | `GET /api/me/page` (`backend/app/api/me.py:279`, `MyPage` in `backend/app/schemas/me.py:68`) shows name, plan, payments, rank, attendance and cobros. It does not show the RUT, email, phone, birth date, guardian, custom fields or message history |
-| One-click JSON export | **missing** | no endpoint. #63 is the gym-wide export, not the member's |
+| The student page shows all stored data | **done** (#371) | "Mis datos" (`/me/datos`, `GET /api/me/data` in `backend/app/api/my_data.py`): every row of every table with a `person_id`, for the person and each dependent, sensitive custom fields included; where the data came from, how long it is kept, and the gym's privacy email to fix it. `tests/test_my_data.py` fails when a new such table is neither exported nor left out with a reason |
+| One-click JSON export | **done** (#371) | "Descargar mis datos": `GET /api/me/data?download=1`, the same document as a file. #63 is the gym-wide export |
 | Deletion that anonymises the person and keeps ledger amounts | **missing** | see below |
 
 What exists is `DELETE /api/people/{id}` (owner only), which calls `forget_gym_person` (migrations 0032, 0044, 0051, 0054, 0055). It **deletes**, it does not anonymise. It **refuses** anyone the gym kept money from (`forget_refusal` returns `payment`; `backend/tests/test_voids.py:358`). So a member who ever paid cannot be deleted at all, which is most real members. It was built for people added by mistake.
@@ -85,7 +85,7 @@ When it does run, it leaves these behind:
 - `idempotency_key` response bodies that mention them;
 - the global `person` row (name, RUT, email, birth date), which only #69 was meant to erase.
 
-Gap: #371 (view and export) and #372 (deletion).
+Gap: #372 (deletion). The view and export were #371.
 
 ### Retention: lapsed memberships anonymised at 24 months, proof images deleted 12 months after validation
 
@@ -256,7 +256,7 @@ Gap: #375.
 | Breach response runbook | blocks second gym | #369 |
 | Restore rehearsed before the second gym | blocks second gym | ops#2 |
 | Consent record kept past approval, with the notice version, the guardian, and the basis for staff-added members | before paid launch | #370 |
-| The member's own data view and JSON export on `/me` | before paid launch | #371 |
+| The member's own data view and JSON export on `/me` (done) | before paid launch | #371 |
 | Deletion for a member who paid: anonymise instead of refusing, and remove what `forget_gym_person` leaves behind | before paid launch | #372 |
 | Sentry: no request bodies, locals or row values; choose the region (done: US, #430) | before paid launch | #373 |
 | Logs that can scope an incident: gym, person and IP on requests; reads and exports recorded; kept long enough | before paid launch | #374 |

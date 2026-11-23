@@ -11,7 +11,7 @@ import './MeLayout.css'
 /**
  * Shell for the student page reached by magic link. No navigation: the
  * student has one page, a phone's column that widens to two on a desktop, a way out,
- * and the gym's privacy notice. Staff who also train get a way back to the admin
+ * "Mis datos" (#371) and the gym's privacy notice. Staff who also train get a way back to the admin
  * screens (#214).
  */
 export function MeLayout() {
@@ -41,6 +41,9 @@ export function MeLayout() {
         <Button disabled={signOut.isPending} onClick={() => signOut.mutate()}>
           {signOut.isPending ? t.signOut.working : t.signOut.label}
         </Button>
+        <Link to="/me/datos" className="tap-link me-footer__link">
+          {t.me.myData.link}
+        </Link>
         <Link to="/privacidad" className="tap-link me-footer__link">
           {t.privacy.link}
         </Link>
