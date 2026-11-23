@@ -7,7 +7,7 @@
     docker compose up -d --wait && make seed
     uv run --with playwright==1.65.2 playwright install chromium   # once
     uv run site/screenshots.py [--scene NAME]... [--only NAME]...
-    uv run site/screenshots.py --hero   # the hero's widths again, from the 2× on disk
+    uv run site/screenshots.py --hero   # the hero's widths and the AVIFs again, from the 2× on disk
 
 Writes, for each shot, `site/img/<name>-2x.webp` and `<name>-1x.webp`, the screen
 taken at 2× (a phone at 390×844, a computer at 1280×800) and cropped to what the shot
@@ -76,6 +76,9 @@ DESKTOP = {"viewport": {"width": 1280, "height": 800}, "device_scale_factor": 2}
 # The hero's captures (#461), and the scales each comes in beside 1× and 2×: the
 # computer's shows 900 CSS pixels wide, the phone's 302.
 HERO = {"hoy-1280": (0.75, 1.5), "hoy-390": (1.5,)}
+# Shots added since (#563) come in AVIF too, at 1× and 2× only: the page shows them in a
+# `<picture>` with `sizes`, like the hero, but lazy.
+AVIF = {"finanzas-390": ()}
 
 # Words that would make the page read as a martial-arts app. In the neutral scene a
 # shot whose screen holds one of them fails, so a seed or screen change cannot slip
@@ -310,6 +313,8 @@ SCENES = (
             Shot("comprobante-390", OWNER, "/admin/pagos/comprobantes", PHONE),
             Shot("vencidos-390", OWNER, "/admin", PHONE, scroll_to="Vencidos"),
             Shot("pruebas-390", OWNER, "/admin", PHONE, scroll_to="Pruebas", offset=360),
+            # Lo que entra y lo que sale (#563): Finanzas, the month's result.
+            Shot("finanzas-390", OWNER, "/admin/finanzas", PHONE),
             # Para tus profes: the month's classes, and the requirements on a ficha.
             Shot(
                 "mes-1280",
@@ -576,14 +581,14 @@ def save(image: Image.Image, name: str) -> None:
     half = image.resize((image.width // 2, image.height // 2), Image.Resampling.LANCZOS)
     half.save(IMG / f"{name}-1x.webp", "WEBP", quality=82, method=6)
     print(f"ok   - {name} ({half.width}×{half.height})")
-    if name in HERO:
+    if name in HERO or name in AVIF:
         hero(image, name)
 
 
 def hero(image: Image.Image, name: str) -> None:
     """The hero's widths of the 2× capture `image`: WebP at the scales `save` does not
     write, and AVIF at every one."""
-    scales = sorted({1, 2, *HERO[name]})
+    scales = sorted({1, 2, *{**HERO, **AVIF}[name]})
     for scale in scales:
         size = (round(image.width * scale / 2), round(image.height * scale / 2))
         scaled = image if scale == 2 else image.resize(size, Image.Resampling.LANCZOS)
@@ -674,7 +679,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     if args.hero:
-        for name in HERO:
+        for name in {**HERO, **AVIF}:
             hero(Image.open(IMG / f"{name}-2x.webp").convert("RGB"), name)
         return
     scenes = [s for s in SCENES if not args.scene or s.name in args.scene]
