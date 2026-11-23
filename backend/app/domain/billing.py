@@ -31,6 +31,13 @@ period, plan or sibling is moved (#280): out of its period with a refund-shaped 
 (`move_out`) and into another with a payment (`move_in`), neither income nor a refund.
 An adjustment made by mistake is reverted (`revert`, #282), and a real debt that will
 not be collected is forgiven (`write_off`), which "Esperado" still counts.
+
+A monthly plan's anchor changed (#547) moves the members who agree to it to the new day
+from the first period not billed: a pending `next_anchor_day`, which that period
+applies. It runs from its first day to the day before the new anchor day, priced at
+the share of the old anchor's period it covers, rounded down (`transition_period`):
+no day is billed twice and none is left unbilled. The next one is a whole period on
+the new day.
 """
 
 from collections.abc import Callable, Iterable
@@ -380,6 +387,9 @@ class Billable:
     # A pending plan change: the plan, and the first day it applies (migration 0009).
     next_plan: Plan | None = None
     next_plan_from: date | None = None
+    # A pending move of a monthly membership to another anchor day (#547), from the
+    # first period not billed. A plan change reaching that period replaces it.
+    next_anchor_day: int | None = None
 
 
 @dataclass(frozen=True)
@@ -392,6 +402,9 @@ class Billing:
     plan_changed: bool
     plan: Plan
     anchor_day: int | None
+    # True when the pending anchor move was applied, or a plan change dropped it: the
+    # membership bills on `anchor_day` and has no move pending (#547).
+    anchor_moved: bool = False
 
 
 def discounted(price_clp: int, discount_pct: int) -> int:
@@ -423,6 +436,25 @@ def _period(
         return BillingPeriod(terms.period_start, terms.period_end, amount, due_date=due)
     end = _period_end(plan, start, anchor_day)
     return BillingPeriod(start, end, amount_due_clp=amount, due_date=start)
+
+
+def transition_period(
+    plan: Plan, start: date, from_day: int, to_day: int, discount_pct: int
+) -> BillingPeriod:
+    """The period a monthly membership moving from anchor day `from_day` to `to_day`
+    bills from `start`, the first day not billed (#547): to the day before `to_day`
+    comes, priced at the share of the period `from_day` would have billed that its days
+    are, rounded down. A whole period on `to_day` when `start` is on it already."""
+    if plan.terms.kind is not PlanKind.MONTHLY:
+        raise ValueError(f"only a monthly plan bills on an anchor day, not {plan.terms.kind}")
+    amount = discounted(plan.price_clp, discount_pct)
+    end = _next_anchor(start, to_day) - timedelta(days=1)
+    if add_months(start, 0, anchor_day=to_day) == start:
+        return BillingPeriod(start, end, amount_due_clp=amount, due_date=start)
+    whole = (_next_anchor(start, from_day) - start).days
+    days = (end - start).days + 1
+    prorated = min(amount, amount * days // whole)
+    return BillingPeriod(start, end, amount_due_clp=prorated, due_date=start)
 
 
 def _period_end(plan: Plan, start: date, anchor_day: int | None) -> date:
@@ -507,7 +539,8 @@ def _billing(billable: Billable, more: Callable[[date, int], bool]) -> Billing:
         return unchanged
     start = first_unbilled(billable)
     pending, pending_from = billable.next_plan, billable.next_plan_from
-    changed = False
+    to_day = billable.next_anchor_day
+    changed = moved = False
     # A monthly row from before anchor days were stored bills on the day it resumes.
     fallback_anchor = start.day if start is not None else None
     periods: list[BillingPeriod] = []
@@ -515,19 +548,62 @@ def _billing(billable: Billable, more: Callable[[date, int], bool]) -> Billing:
         # The plan change applies with the period it reaches, not before.
         bill_plan, bill_anchor = plan, anchor_day
         changing = pending is not None and pending_from is not None and start >= pending_from
+        # An anchor move applies with the first period, on the plan it has (#547).
+        moving = not changing and to_day is not None and plan.terms.kind is PlanKind.MONTHLY
         if changing:
             assert pending is not None and pending_from is not None
             bill_plan, bill_anchor = pending, changed_anchor(pending, pending_from)
-        period = _period(bill_plan, start, bill_anchor or fallback_anchor, billable.discount_pct)
+        period = (
+            transition_period(plan, start, bill_anchor or start.day, to_day, billable.discount_pct)
+            if moving and to_day is not None
+            else _period(bill_plan, start, bill_anchor or fallback_anchor, billable.discount_pct)
+        )
         if period is None or not more(period.due_date, len(periods)):
             break
         if changing:
             plan, anchor_day, pending, changed = bill_plan, bill_anchor, None, True
+            # The new plan's own anchor day replaces a move on the old one.
+            moved, to_day = moved or to_day is not None, None
+        if moving:
+            anchor_day, to_day, moved = to_day, None, True
         periods.append(period)
         start = period.period_end + timedelta(days=1)
         if plan.terms.kind in SINGLE_CHARGE:
             start = None
-    return Billing(tuple(periods), plan_changed=changed, plan=plan, anchor_day=anchor_day)
+    return Billing(
+        tuple(periods), plan_changed=changed, plan=plan, anchor_day=anchor_day, anchor_moved=moved
+    )
+
+
+@dataclass(frozen=True)
+class AnchorMove:
+    """What moving a monthly membership to another anchor day bills (#547): the
+    transition period, and the first whole period on the new day after it."""
+
+    from_day: int
+    to_day: int
+    transition: BillingPeriod
+    next_period: BillingPeriod
+
+
+def anchor_move(billable: Billable, to_day: int) -> AnchorMove | None:
+    """What a move of `billable` to anchor day `to_day` from its first period not billed
+    would bill, as the nightly job will when it reaches it, for the plan form to say so
+    before it is saved (#547); `None` when nothing would move: a membership not monthly,
+    one already on `to_day`, or one leaving the plan by a pending plan change. A frozen
+    one is quoted as from the day it bills again."""
+    if billable.plan.terms.kind is not PlanKind.MONTHLY or billable.next_plan is not None:
+        return None
+    start = first_unbilled(billable)
+    if start is None:
+        return None
+    from_day = billable.anchor_day or start.day
+    if from_day == to_day:
+        return None
+    moving = replace(billable, status=MembershipStatus.ACTIVE, next_anchor_day=to_day)
+    owed = _billing(moving, lambda _, billed: billed < 2)
+    transition, next_period = owed.periods
+    return AnchorMove(from_day, to_day, transition, next_period)
 
 
 def changed_anchor(plan: Plan, starts_on: date) -> int | None:

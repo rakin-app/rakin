@@ -504,6 +504,8 @@ class CorrectionAction(StrEnum):
     CANCEL_UNDONE = "cancel_undone"
     # A discount set, changed or taken off (#25), a plan started with one included.
     DISCOUNT_CHANGED = "discount_changed"
+    # A monthly plan moved to another anchor day with its plan's (#547).
+    ANCHOR_CHANGED = "anchor_changed"
 
 
 class DiscountFigures(BaseModel):
@@ -518,6 +520,15 @@ class DiscountShift(BaseModel):
 
     before: DiscountFigures
     after: DiscountFigures
+    starts_on: date
+
+
+class AnchorShift(BaseModel):
+    """A monthly plan moved to another anchor day (#547): the day it billed on and the
+    one it bills on, from `starts_on`, the first day billed towards it."""
+
+    before: int
+    after: int
     starts_on: date
 
 
@@ -540,6 +551,8 @@ class Correction(BaseModel):
     after: Figures | None
     # On a `discount_changed` row; null on every other.
     discount: DiscountShift | None = None
+    # On an `anchor_changed` row (#547); null on every other.
+    anchor: AnchorShift | None = None
     # On a payment moved (#280): the other period's start, where it went (`moved`
     # `out`) or came from (`in`).
     moved: str | None = None

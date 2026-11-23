@@ -292,6 +292,8 @@ class MembershipForCoach(BaseModel):
     status: MembershipStatus
     # The day of the month a monthly plan bills on; null on every other kind.
     anchor_day: int | None
+    # The day it moves to from its next period not billed, with its plan's (#547).
+    next_anchor_day: int | None = None
     started_on: date
     current_period_end: date | None
     credits_remaining: int | None

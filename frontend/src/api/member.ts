@@ -56,6 +56,8 @@ export type Membership = {
   status: MembershipStatus
   // The day of the month a monthly plan bills on; null on every other kind.
   anchor_day: number | null
+  // The day it moves to from its next period not billed, with its plan's (#547).
+  next_anchor_day?: number | null
   started_on: string
   // Paid through, or the last day of a pack or trial.
   current_period_end: string | null
@@ -292,7 +294,13 @@ export type Figures = { outstanding_clp: number; balance_clp: number }
 export type Correction = {
   id: string
   at: string
-  action: 'ledger_corrected' | 'due_date_changed' | 'membership_reactivated' | 'cancel_undone' | 'discount_changed'
+  action:
+    | 'ledger_corrected'
+    | 'due_date_changed'
+    | 'membership_reactivated'
+    | 'cancel_undone'
+    | 'discount_changed'
+    | 'anchor_changed'
   // The entry's: null for a plain adjustment, `void` for a void, `restore` (#278).
   purpose: string | null
   // One of the voids of a plan voided by mistake (#256).
@@ -305,6 +313,8 @@ export type Correction = {
   after: Figures | null
   // On a `discount_changed` row (#25): the discount before and after, and the first day billed at the new one.
   discount?: DiscountShift | null
+  // On an `anchor_changed` row (#547): the day billed on before and after, and from when.
+  anchor?: { before: number; after: number; starts_on: string } | null
   // On a payment moved (#280): `out` of this person's period or `in` to it, and the other period's start.
   moved?: 'out' | 'in' | null
   other_period_start?: string | null

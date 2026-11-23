@@ -2379,6 +2379,29 @@ describe('Ficha de alumno', () => {
     ])
   })
 
+  it('lists a move to the plan\'s new day of payment among the corrections (#547)', async () => {
+    stubApi({
+      corrections: [
+        correction({
+          id: 'anchor',
+          action: 'anchor_changed',
+          purpose: null,
+          period_start: null,
+          reason: null,
+          before: null,
+          after: null,
+          anchor: { before: 1, after: 12, starts_on: '2026-12-01' },
+        }),
+      ],
+    })
+    renderAt(PATH)
+
+    const fixes = await screen.findByRole('region', { name: copy.corrections.title })
+    expect(within(fixes).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'Cambió el día de cobrodesde el cobro del 1 dic · Mensual adultos · por Ana · 2 novdía 1 → día 12',
+    ])
+  })
+
   it('lists a due date moved among the corrections, before → after (#283)', async () => {
     stubApi({
       corrections: [

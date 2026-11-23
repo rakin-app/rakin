@@ -135,7 +135,8 @@ RETURN_IS_MEMBERS = HTTPException(
 # RLS keeps every table to the current gym.
 SELECT_MEMBERSHIP = """
     SELECT m.id, m.person_id, m.plan_id, pl.name AS plan_name, pl.kind AS plan_kind,
-           m.status, m.anchor_day, (m.started_at AT TIME ZONE g.timezone)::date AS started_on,
+           m.status, m.anchor_day, m.next_anchor_day,
+           (m.started_at AT TIME ZONE g.timezone)::date AS started_on,
            m.current_period_end, m.credits_remaining, m.discount_pct, m.discount_reason,
            m.next_plan_id, np.name AS next_plan_name, m.next_plan_from,
            m.cancel_reason, m.cancelled_at, m.voided_at, m.void_reason, m.created_at,
@@ -1242,9 +1243,11 @@ OWED_DUE = text(
     """
 )
 
+# A reactivated plan bills on the day the plan's anchor gives it now: a move to another
+# day pending from before it lapsed goes (#547).
 REACTIVATE = text(
     "UPDATE membership SET status = :status, current_period_end = :end, anchor_day = :anchor,"
-    " reactivated_at = now() WHERE id = :id"
+    " next_anchor_day = NULL, reactivated_at = now() WHERE id = :id"
 )
 
 MEMBERSHIP_REACTIVATED = "membership_reactivated"

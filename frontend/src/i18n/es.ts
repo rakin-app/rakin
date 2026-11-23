@@ -994,6 +994,9 @@ export const es = {
       noPlan: 'Sin plan',
       paymentLabel: 'Estado de pago',
       dueDay: (plan: string, day: number) => `${plan} · vence el ${day}`,
+      // A move to the plan's new anchor day, pending until the next period (#547).
+      dueDayMoving: (plan: string, day: number, next: number) =>
+        `${plan} · vence el ${day}, desde su próximo cobro el ${next}`,
       until: (plan: string, day: string) => `${plan} · hasta el ${day}`,
       overdue: (days: number) => `Vencido ${days} d`,
       frozenUntil: (day: string) => `Congelado · vuelve el ${day}`,
@@ -2074,6 +2077,10 @@ export const es = {
         discountRemoved: 'Quitó el descuento',
         discountPct: (before: number, after: number) => `${before}% → ${after}%`,
         discountFrom: (day: string) => `desde el cobro del ${day}`,
+        // A monthly plan moved to its plan's new anchor day (#547): the day before → after, and from when.
+        anchorChanged: 'Cambió el día de cobro',
+        anchorDays: (before: number, after: number) => `día ${before} → día ${after}`,
+        anchorFrom: (day: string) => `desde el cobro del ${day}`,
         // What the period owed, before → after.
         owed: (before: string, after: string) => `${before} → ${after}`,
         balance: (before: string, after: string) => `Saldo ${before} → ${after}`,
@@ -2507,6 +2514,32 @@ export const es = {
           enrolmentFee: 'Matrícula (CLP)',
           enrolmentHint: 'Opcional. Se cobra una vez, como cobro extra, a quien empieza el plan; no al reactivarlo ni al cambiarse a él.',
           anchor: 'Día de cobro',
+          // A monthly plan's anchor changed (#547): whether the members already on it move too.
+          anchorMove: {
+            get legend() {
+              return `${w.Members} que ya tienen este plan`
+            },
+            offer: (count: number, anchor: 'signup' | 'first') =>
+              `¿Aplicar también a ${count === 1 ? '' : `${w.memberIs('los', 'las')} `}${w.memberCount(count)} con este plan? ${
+                anchor === 'signup'
+                  ? 'Desde su próximo cobro, pagan el día que empezaron.'
+                  : 'Desde su próximo cobro, pagan el día 1 de cada mes.'
+              }`,
+            proration:
+              'El primer cobro después del cambio cubre solo los días hasta el nuevo día de cobro, y se cobra en proporción a esos días: ningún día queda sin cobrar ni se cobra dos veces. Lo ya cobrado no cambia.',
+            line: (start: string, end: string, amount: string, next: string, nextAmount: string) =>
+              `del ${start} al ${end}: ${amount}; desde el ${next}: ${nextAmount} al mes`,
+            frozen: 'plan congelado',
+            // A move pending to another day, which this change withdraws.
+            withdrawn: (pending: number, day: number) => `se cancela el cambio al día ${pending}: sigue pagando el día ${day}`,
+            declined: (anchor: 'signup' | 'first') =>
+              `${w.TheMembers} que ya tienen este plan siguen pagando el día de siempre; solo ${w.memberIs('los nuevos', 'las nuevas')} ${anchor === 'signup' ? 'pagan desde su inicio' : 'pagan el día 1'}.`,
+            get none() {
+              return `Nadie con este plan cambia de día de cobro: ${w.theMembers} que lo tienen ya pagan ese día.`
+            },
+            loading: 'Cargando…',
+            error: 'No pudimos calcular el cambio para quienes ya tienen este plan.',
+          },
           periodMonths: 'Meses que cubre',
           periodStart: 'Desde',
           periodEnd: 'Hasta',
@@ -2567,6 +2600,9 @@ export const es = {
         },
         created: (name: string) => `Plan ${name} creado.`,
         saved: (name: string) => `Plan ${name} guardado.`,
+        // With the members moved to its new day (#547).
+        savedMoved: (name: string, moved: number) =>
+          `Plan ${name} guardado. ${w.memberCount(moved)} ${moved === 1 ? 'pasa' : 'pasan'} al nuevo día de cobro desde su próximo cobro.`,
         deactivated: (name: string) => `Plan ${name} desactivado. ${w.TheMembers} que ya lo tienen lo mantienen.`,
         reactivated: (name: string) => `Plan ${name} reactivado.`,
         toggleFailed: 'No pudimos cambiar el plan. Inténtalo de nuevo.',

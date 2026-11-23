@@ -128,6 +128,8 @@ def ids(loaded: Loaded) -> dict[str, str]:
         "slot_id": str(seed.schedule_slots[0]["id"]),
         # A discount quoted (#25).
         "pct": "10",
+        # A plan's anchor changed, its moves quoted (#547), which a coach is refused.
+        "anchor": "first",
         # Where a payment may move (#280), which a coach is refused.
         "payment_id": unknown,
         # "Pagado hasta" quoted up to a day (#286), which a coach is refused.

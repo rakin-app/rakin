@@ -4,17 +4,21 @@ import { ApiError } from '../api/client'
 import { programsQuery, type Program } from '../api/people'
 import {
   ANCHORS,
+  anchorMovesQuery,
   createPlan,
   nextPeriod,
   PLAN_KINDS,
   planMembershipsQuery,
   plansQuery,
   updatePlan,
+  type Anchor,
+  type AnchorMoves as Quote,
+  type AnchorWithdrawal,
   type Plan,
   type PlanFields,
   type PlanKind,
 } from '../api/plans'
-import { nextYear, shortDate } from '../format'
+import { nextYear, shortDate, shortDay } from '../format'
 import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Input, Select } from '../components/Field'
@@ -239,13 +243,24 @@ function PlanForm({
   // An edit sends only what changed, so a field someone else edited meanwhile is left as they left it.
   const changed = (['name', 'program_id', ...params] as const).filter((k) => drafts[k] !== initial[k])
 
+  // A monthly plan's anchor changed reaches the members already on it only if the owner
+  // says so (#547): the moves are quoted first, each member's, and sent with the edit.
+  const anchorChanged = plan?.kind === 'monthly' && drafts.anchor !== initial.anchor
+  const [moveMembers, setMoveMembers] = useState(false)
+  const moves = useQuery({ ...anchorMovesQuery(plan?.id ?? '', drafts.anchor as Anchor), enabled: anchorChanged })
+  const moving = anchorChanged && moveMembers && moves.isSuccess ? moves.data.moves.length : 0
+
   const save = useSubmit({
     offline: 'refuse',
     mutationFn: () =>
-      plan ? updatePlan(plan.id, fields(changed)) : createPlan({ kind, ...fields(['name', 'program_id', ...params]) }),
+      plan
+        ? updatePlan(plan.id, moving ? { ...fields(changed), move_members: true } : fields(changed))
+        : createPlan({ kind, ...fields(['name', 'program_id', ...params]) }),
     onSuccess: async (answer) => {
-      onDone(plan ? copy.saved(answer.name) : copy.created(answer.name))
+      onDone(plan ? (moving ? copy.savedMoved(answer.name, moving) : copy.saved(answer.name)) : copy.created(answer.name))
       await queryClient.invalidateQueries({ queryKey: plansQuery.queryKey })
+      // The members' fichas say the day they move to.
+      if (moving) await queryClient.invalidateQueries({ queryKey: ['people'] })
     },
   })
   // A create's refusals name the kind first (`monthly.price_clp`); an edit's do not.
@@ -364,6 +379,16 @@ function PlanForm({
           }
         </Field>
       ))}
+      {anchorChanged && (
+        <AnchorMoves
+          anchor={drafts.anchor as Anchor}
+          moves={moves.data}
+          pending={moves.isPending}
+          failed={moves.isError}
+          checked={moveMembers}
+          onChange={setMoveMembers}
+        />
+      )}
 
       {save.error && (
         <Banner tone="error">
@@ -404,6 +429,104 @@ function PlanForm({
         </div>
       )}
     </form>
+  )
+}
+
+/**
+ * "¿Aplicar también a los N alumnos con este plan?" (#547): a monthly plan's anchor
+ * changed, offered to the members already on it, each with what moving them bills: the
+ * transition to their new day, prorated, then the whole month. Unticked, the form says
+ * they keep their day before it is saved.
+ */
+function AnchorMoves({
+  anchor,
+  moves: quote,
+  pending,
+  failed,
+  checked,
+  onChange,
+}: {
+  anchor: Anchor
+  moves: Quote | undefined
+  pending: boolean
+  failed: boolean
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  const words = form.anchorMove
+  if (pending) {
+    return (
+      <fieldset className="settings__moves">
+        <legend className="settings__label">{words.legend}</legend>
+        <Loading className="settings__note">{words.loading}</Loading>
+      </fieldset>
+    )
+  }
+  if (failed || quote === undefined) {
+    return (
+      <fieldset className="settings__moves">
+        <legend className="settings__label">{words.legend}</legend>
+        <Banner tone="error">{words.error}</Banner>
+      </fieldset>
+    )
+  }
+  const { moves } = quote
+  // A pending move withdrawn: always without the offer ticked; ticked, only one that does not move again.
+  const moving = new Set(checked ? moves.map((m) => m.membership_id) : [])
+  const withdrawn = quote.withdrawn.filter((w) => !moving.has(w.membership_id))
+  return (
+    <fieldset className="settings__moves">
+      <legend className="settings__label">{words.legend}</legend>
+      {moves.length === 0 ? (
+        withdrawn.length === 0 && <p className="settings__note">{words.none}</p>
+      ) : (
+        <>
+          <CheckRow>
+            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+            {words.offer(moves.length, anchor)}
+          </CheckRow>
+          {checked ? (
+            <>
+              <p className="settings__note">{words.proration}</p>
+              <ul className="settings__note" aria-label={words.legend}>
+                {moves.map((move) => (
+                  <li key={move.membership_id}>
+                    {[
+                      move.name,
+                      words.line(
+                        shortDay(move.starts_on),
+                        shortDay(move.ends_on),
+                        clp(move.amount_due_clp),
+                        shortDay(move.next_starts_on),
+                        clp(move.next_amount_clp),
+                      ),
+                      move.status === 'frozen' ? words.frozen : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="settings__note">{words.declined(anchor)}</p>
+          )}
+        </>
+      )}
+      {withdrawn.length > 0 && <Withdrawn withdrawn={withdrawn} />}
+    </fieldset>
+  )
+}
+
+/** "Ana Rojas · se cancela el cambio al día 12: sigue pagando el día 1" (#547). */
+function Withdrawn({ withdrawn }: { withdrawn: AnchorWithdrawal[] }) {
+  const words = form.anchorMove
+  return (
+    <ul className="settings__note">
+      {withdrawn.map((w) => (
+        <li key={w.membership_id}>{[w.name, words.withdrawn(w.pending_day, w.stays_on)].join(' · ')}</li>
+      ))}
+    </ul>
   )
 }
 

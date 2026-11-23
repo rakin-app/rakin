@@ -60,8 +60,13 @@ export function createPlan(body: PlanFields & { kind: PlanKind }): Promise<Plan>
   return apiFetch<Plan>('/api/plans', { method: 'POST', body: JSON.stringify(body) })
 }
 
-/** Only the fields sent change; there is no delete, `active: false` deactivates. */
-export function updatePlan(planId: string, changes: PlanFields & { active?: boolean }): Promise<Plan> {
+/** Only the fields sent change; there is no delete, `active: false` deactivates. With a
+ * monthly plan's `anchor`, `move_members` moves the members on it to the day it gives
+ * them from their next period (#547), as `anchorMovesQuery` quotes it. */
+export function updatePlan(
+  planId: string,
+  changes: PlanFields & { active?: boolean; move_members?: boolean },
+): Promise<Plan> {
   return apiFetch<Plan>(`/api/plans/${encodeURIComponent(planId)}`, {
     method: 'PATCH',
     body: JSON.stringify(changes),
@@ -101,3 +106,42 @@ export function nextPeriod(planId: string, body: NextPeriod): Promise<{ plan: Pl
     body: JSON.stringify(body),
   })
 }
+
+/** A member on a monthly plan as changing its anchor would move them (#547), from their
+ * next period not billed: the day they pay on and the one they would, the transition
+ * period to it, prorated, and the first whole period on the new day, after any discount. */
+export type AnchorMove = {
+  membership_id: string
+  person_id: string
+  name: string
+  status: 'active' | 'frozen'
+  from_day: number
+  to_day: number
+  starts_on: string
+  ends_on: string
+  amount_due_clp: number
+  next_starts_on: string
+  next_amount_clp: number
+}
+
+/** A member whose move pending to `pending_day` changing the anchor withdraws (#547): they stay on `stays_on`. */
+export type AnchorWithdrawal = {
+  membership_id: string
+  person_id: string
+  name: string
+  status: 'active' | 'frozen'
+  pending_day: number
+  stays_on: number
+}
+
+/** A change of a monthly plan's anchor quoted: who `move_members` moves, and whose pending move goes without it. */
+export type AnchorMoves = { moves: AnchorMove[]; withdrawn: AnchorWithdrawal[] }
+
+export const anchorMovesQuery = (planId: string, anchor: Anchor) =>
+  queryOptions({
+    queryKey: ['plans', planId, 'anchor-moves', anchor],
+    queryFn: () =>
+      apiFetch<AnchorMoves>(
+        `/api/plans/${encodeURIComponent(planId)}/anchor-moves?anchor=${encodeURIComponent(anchor)}`,
+      ),
+  })

@@ -5,7 +5,9 @@ run date plus `GENERATE_AHEAD_DAYS` (`app.domain.billing.due_periods`), each wit
 validated `charge` ledger entry for its amount. A period discounted to nothing has no
 charge: a ledger entry's amount is positive. A pending plan change that a new period
 reaches is applied with it: `plan_id` takes `next_plan_id`, and `anchor_day` is
-recomputed from the day it starts (migration 0009).
+recomputed from the day it starts (migration 0009). A pending move to another anchor
+day (#547) is applied with the first period, prorated: `anchor_day` takes
+`next_anchor_day`, which a plan change clears as well (migration 0096).
 
 It picks up from the latest period each membership has (or the day it was paid
 through, if later), so a second run on the same date finds nothing owed. The
@@ -53,6 +55,7 @@ NAME = "billing_periods"
 BILLABLE = """
 SELECT m.id, m.status, (m.started_at AT TIME ZONE g.timezone)::date AS started_on,
        m.current_period_end, m.anchor_day, m.discount_pct, m.next_plan_from,
+       m.next_anchor_day,
        (SELECT max(b.period_end) FROM billing_period b WHERE b.membership_id = m.id)
            AS billed_through,
        pl.kind, pl.anchor, pl.credits, pl.credit_expiry_days, pl.price_clp,
@@ -75,6 +78,13 @@ SELECT_BILLABLE = f"{BILLABLE} WHERE m.status = 'active' ORDER BY m.id FOR UPDAT
 # on their first day, or one paying ahead (#196).
 SELECT_ONE_BILLABLE = f"{BILLABLE} WHERE m.id = $1"
 
+# The memberships on a plan now, Active or Frozen and not voided, that a change of its
+# anchor may move (#547); locked with `FOR UPDATE OF m` when they are moved.
+SELECT_ON_PLAN = (
+    f"{BILLABLE} WHERE m.plan_id = $1 AND m.status IN ('active', 'frozen')"
+    " AND m.voided_at IS NULL ORDER BY m.id"
+)
+
 INSERT_PERIOD = """
 INSERT INTO billing_period
     (gym_id, membership_id, period_start, period_end, amount_due_clp, due_date)
@@ -92,8 +102,13 @@ VALUES (current_setting('app.gym_id')::uuid, $1, $2, $3, 'charge', 'validated', 
 
 APPLY_PLAN_CHANGE = """
 UPDATE membership
-SET plan_id = next_plan_id, anchor_day = $2, next_plan_id = NULL, next_plan_from = NULL
+SET plan_id = next_plan_id, anchor_day = $2, next_plan_id = NULL, next_plan_from = NULL,
+    next_anchor_day = NULL
 WHERE id = $1
+"""
+
+APPLY_ANCHOR_MOVE = """
+UPDATE membership SET anchor_day = $2, next_anchor_day = NULL WHERE id = $1
 """
 
 
@@ -125,6 +140,7 @@ def _billable(row: asyncpg.Record) -> Billable:
         discount_pct=row["discount_pct"],
         next_plan=_plan(row, "next_"),
         next_plan_from=row["next_plan_from"],
+        next_anchor_day=row["next_anchor_day"],
     )
 
 
@@ -154,6 +170,15 @@ async def billable_membership(
     return None if row is None else _billable(row)
 
 
+async def billables_on_plan(
+    conn: asyncpg.Connection, plan_id: uuid.UUID, *, lock: bool = False
+) -> list[tuple[uuid.UUID, Billable]]:
+    """The memberships on the plan now, Active or Frozen, as billing sees them, by id;
+    with `lock`, their rows locked until the transaction ends."""
+    sql = f"{SELECT_ON_PLAN} FOR UPDATE OF m" if lock else SELECT_ON_PLAN
+    return [(row["id"], _billable(row)) for row in await conn.fetch(sql, plan_id)]
+
+
 async def write_billing(
     conn: asyncpg.Connection, membership_id: uuid.UUID, owed: Billing
 ) -> list[tuple[uuid.UUID, BillingPeriod]]:
@@ -176,6 +201,8 @@ async def write_billing(
             await conn.execute(INSERT_CHARGE, membership_id, period_id, period.amount_due_clp)
     if owed.plan_changed:
         await conn.execute(APPLY_PLAN_CHANGE, membership_id, owed.anchor_day)
+    elif owed.anchor_moved:
+        await conn.execute(APPLY_ANCHOR_MOVE, membership_id, owed.anchor_day)
     return written
 
 
