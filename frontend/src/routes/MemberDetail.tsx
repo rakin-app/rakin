@@ -70,7 +70,7 @@ import {
   type TimelineEntry,
 } from '../api/member'
 import { holds, myAccessQuery, readsLedger, type Access } from '../api/me'
-import { welcomeQuery } from '../api/people'
+import { refusedAnonymised, welcomeQuery } from '../api/people'
 import { remindersQuery } from '../api/reminders'
 import { useGymToday } from '../api/sessions'
 import { RankBelt } from '../components/Belt'
@@ -90,6 +90,7 @@ import { addDays, isoDay, monthName, monthYear, shortDay } from '../format'
 import { Banner, Card, cardClass, CheckRow, PlainList, SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
+import { failedMessage } from './anonymised'
 import { FamilyPanel } from './FamilyPanel'
 import { PersonActions } from './PersonActions'
 import { GradeForm } from './GradeForm'
@@ -131,6 +132,10 @@ const route = getRouteApi('/admin/alumnos/$personId')
  * see (#20), edited together; "Acceso", their sign-in link and how the welcome went
  * (#246); then "Dar de baja" or "Reactivar", and "Eliminar" (#157).
  * On a desktop, the money and its ledger on the left and the rest on the right (#179).
+ *
+ * An anonymous record (#372) is read-only (#581): its plans, Libro, corrections and
+ * history as they are, with no action, fix, reminder or form in any section, and none
+ * of the hints that ask for data it will never have.
  *
  * In the header, WhatsApp: for whoever reads the ledger, the reminder about what they
  * owe, the longest overdue first, when there is one to send (#55); else a plain chat.
@@ -188,12 +193,14 @@ export function MemberDetail() {
   const since = monthYear(firstStart ?? person.data.created_at)
   const rank = graded ? grades.data?.current : undefined
   const money = readsLedger(access.data)
+  // An anonymous record (#372) is the books' alone: read, never changed (#581).
+  const readOnly = person.data.anonymised === true
 
   return (
     <Shell
       title={person.data.name}
       subtitle={rank ? copy.rankSince(rankLabel(rank), since) : copy.since(since)}
-      action={<HeaderWhatsApp person={person.data} money={money} />}
+      action={readOnly ? undefined : <HeaderWhatsApp person={person.data} money={money} />}
     >
       {person.data.left_on && (
         <Banner tone="error" role="status">
@@ -219,7 +226,9 @@ export function MemberDetail() {
                   membership={m}
                   money={money}
                   named={shown.length > 1}
-                  earlier={money && i === 0 ? <EarlierDebt memberships={memberships.data} shown={shown} /> : null}
+                  earlier={
+                    money && i === 0 && !readOnly ? <EarlierDebt memberships={memberships.data} shown={shown} /> : null
+                  }
                   assign={{ person: person.data, access: access.data, done: assigned, setDone: setAssigned }}
                 />
               ))}
@@ -239,7 +248,10 @@ export function MemberDetail() {
           <Attendance personId={personId} />
           <MemberMatTime personId={personId} />
           <MemberTagHours personId={personId} />
-          <Graduation personId={personId} canAward={membership !== undefined && membership.status !== 'cancelled'} />
+          <Graduation
+            personId={personId}
+            canAward={!readOnly && membership !== undefined && membership.status !== 'cancelled'}
+          />
           <section className="member__section" aria-label={t.admin.family.toggle}>
             <SectionHeader title={t.admin.family.toggle} />
             <Card as="div" className="member__card member__family">
@@ -368,6 +380,8 @@ function Standing({
 }) {
   const ledger = useQuery({ ...membershipLedgerQuery(membership.id), enabled: money })
   const data = money ? ledger.data : undefined
+  // An anonymous record's plan and Libro, to read: no action, no fix, no reminder (#581).
+  const readOnly = assign.person.anonymised === true
   // The header's WhatsApp reads the same list. Longest overdue first: the email is about
   // the oldest period this plan owes (#260).
   const reminders = useQuery({ ...remindersQuery(personId), enabled: money })
@@ -390,7 +404,7 @@ function Standing({
             {copy.freezeBooked(shortDay(membership.freeze.from_date), shortDay(membership.freeze.to_date))}
           </p>
         )}
-        {money && <PlanFreezeRequest membershipId={membership.id} />}
+        {money && !readOnly && <PlanFreezeRequest membershipId={membership.id} />}
         {membership.voided_at && membership.void_reason && (
           <p className="member__detail">{copy.voidedBanner(membership.void_reason, shortDay(isoDay(membership.voided_at)))}</p>
         )}
@@ -408,13 +422,13 @@ function Standing({
           </p>
         )}
         {data && <Owed ledger={data} />}
-        {data && overdue && <EmailReminder reminder={overdue} />}
+        {data && overdue && !readOnly && <EmailReminder reminder={overdue} />}
         {money && ledger.isError && (
           <Banner tone="error">
             {copy.ledgerError}
           </Banner>
         )}
-        {data ? (
+        {readOnly ? null : data ? (
           <Actions
             personId={personId}
             membership={membership}
@@ -436,7 +450,7 @@ function Standing({
         )}
       </Card>
       {earlier}
-      {data && <Ledger personId={personId} membership={membership} ledger={data} named={named} />}
+      {data && <Ledger personId={personId} membership={membership} ledger={data} named={named} readOnly={readOnly} />}
     </>
   )
 }
@@ -2102,7 +2116,11 @@ export function PaymentForm({
 
       {record.error && (
         <Banner tone="error">
-          {record.error instanceof ApiError && record.error.status === 409 ? form.refused.paid : form.refused.failed}
+          {refusedAnonymised(record.error)
+            ? copy.anonymisedRefused
+            : record.error instanceof ApiError && record.error.status === 409
+              ? form.refused.paid
+              : form.refused.failed}
         </Banner>
       )}
 
@@ -2225,7 +2243,7 @@ export function PaymentAheadForm({
 
       {record.error && (
         <Banner tone="error">
-          {aheadRefusal(record.error) ?? form.refused.failed}
+          {aheadRefusal(record.error) ?? failedMessage(record.error, form.refused.failed)}
         </Banner>
       )}
 
@@ -2978,7 +2996,11 @@ function RefundForm({
       {step.confirming && <Banner tone="info">{form.notice(monthName(payment.period_start), clp(back))}</Banner>}
       {refund.error && (
         <Banner tone="error">
-          {refund.error instanceof ApiError && refund.error.status === 409 ? form.refused.exceeds : form.refused.failed}
+          {refusedAnonymised(refund.error)
+            ? copy.anonymisedRefused
+            : refund.error instanceof ApiError && refund.error.status === 409
+              ? form.refused.exceeds
+              : form.refused.failed}
         </Banner>
       )}
 
@@ -3018,11 +3040,14 @@ function Ledger({
   membership,
   ledger,
   named = false,
+  readOnly = false,
 }: {
   personId: string
   membership: Membership
   ledger: MembershipLedger
   named?: boolean
+  // Its lines with no fixes: an anonymous record's (#581).
+  readOnly?: boolean
 }) {
   const [all, setAll] = useState(false)
   const [fixing, setFixing] = useState<string | null>(null)
@@ -3042,6 +3067,7 @@ function Ledger({
   /** The line's fixes, if it has any: a charge's, an adjustment's "Revertir" (#282), or a
    * payment's: "Anular pago" (#281) and its refund. */
   const fixesOf = (entry: TimelineEntry): ReactElement | null => {
+    if (readOnly) return null
     if (entry.kind === 'adjustment') {
       const period = entry.billing_period_id === null ? undefined : periods.get(entry.billing_period_id)
       if (!period || !revertible(entry, period, membership)) return null

@@ -16,6 +16,7 @@ import { Input } from '../components/Field'
 import { formatPhone, formatRut } from '../format'
 import { Banner, Card, cardClass, CheckRow, SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
+import { failedMessage } from './anonymised'
 import { FieldInput, valueOf } from './CustomFieldsPanel'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
@@ -28,26 +29,31 @@ const words = copy.fields
  * custom fields the signed-in role may see (#20), with one "Editar datos" for all of
  * them. The API answers only the fields the role may see, so a coach never gets a field
  * the owner kept to themselves.
+ *
+ * An anonymous record (#372) has nothing to edit and nothing to ask for: no "Editar
+ * datos", and none of the hints that say what is missing (#581).
  */
 export function PersonData({ person }: { person: Person }) {
   const fields = useQuery(personFieldsQuery(person.id))
   const [editing, setEditing] = useState(false)
   const [saved, setSaved] = useState(false)
+  // Its data is gone for good: nothing to add, and nothing will be sent to it.
+  const asks = !person.anonymised
 
   return (
     <section className="member__section" aria-label={words.title}>
       <SectionHeader title={words.title} />
-      {person.missing_phone && (
+      {asks && person.missing_phone && (
         <Banner tone="error" role="status">
           {copy.missingPhone}
         </Banner>
       )}
-      {person.missing_rut && (
+      {asks && person.missing_rut && (
         <Banner tone="error" role="status">
           {copy.missingRut}
         </Banner>
       )}
-      {person.missing_guardian && (
+      {asks && person.missing_guardian && (
         <Banner tone="error" role="status">
           {copy.missingGuardian}
         </Banner>
@@ -73,7 +79,7 @@ export function PersonData({ person }: { person: Person }) {
               <Datum key={field.key} label={field.label} sensitive={field.sensitive} value={shown(field)} />
             ))}
           </dl>
-          {person.no_whatsapp && <p className="member__detail">{copy.noWhatsapp}</p>}
+          {asks && person.no_whatsapp && <p className="member__detail">{copy.noWhatsapp}</p>}
           {fields.isPending && <Loading className="member__note">{words.loading}</Loading>}
           {fields.isError && (
             <p className="member__note" role="alert">
@@ -85,7 +91,7 @@ export function PersonData({ person }: { person: Person }) {
               {words.saved}
             </Banner>
           )}
-          {!person.anonymised && <div className="member__actions">
+          {asks && <div className="member__actions">
             <Button
               // Until the custom fields are read, so the form has them to edit; the note above says so.
               disabled={fields.isPending}
@@ -305,7 +311,7 @@ function DataForm({
           ) : save.error instanceof ApiError && save.error.status === 422 ? (
             form.refused.invalid
           ) : (
-            form.refused.failed
+            failedMessage(save.error, form.refused.failed)
           )}
         </Banner>
       )}

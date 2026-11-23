@@ -13,6 +13,7 @@ import { Banner, Card, PlainList, SectionHeader } from '../components/Card'
 import { Field, Input, Textarea } from '../components/Field'
 import { requirementDates, RequirementPill } from '../components/RequirementState'
 import { t } from '../i18n/es'
+import { failedMessage } from './anonymised'
 import { HISTORY_WINDOW_YEARS, yearsBefore } from './historyWindow'
 import './PersonRequirements.css'
 
@@ -24,7 +25,8 @@ const form = copy.form
  * waiver, an induction, a medical certificate, as al día (with its dates), vence pronto
  * (within 30 days), vencido or pendiente, and "Registrar" on each: the day it was done,
  * today unless back-dated, and a note. A record never changes; a new one replaces it.
- * Nothing shows when the gym asks for nothing, nor while it loads.
+ * Nothing shows when the gym asks for nothing, nor while it loads. An anonymous record
+ * (#372) shows its states with nothing to record (#581).
  */
 export function PersonRequirements({ person }: { person: Person }) {
   const requirements = useQuery(personRequirementsQuery(person.id))
@@ -51,6 +53,7 @@ export function PersonRequirements({ person }: { person: Person }) {
                 <Row
                   requirement={requirement}
                   recording={recording === requirement.id}
+                  readOnly={person.anonymised === true}
                   onRecord={() => {
                     setNotice(null)
                     setRecording(requirement.id)
@@ -79,10 +82,12 @@ export function PersonRequirements({ person }: { person: Person }) {
 function Row({
   requirement,
   recording,
+  readOnly,
   onRecord,
 }: {
   requirement: PersonRequirement
   recording: boolean
+  readOnly: boolean
   onRecord: () => void
 }) {
   const dates = requirementDates(requirement, copy)
@@ -95,7 +100,7 @@ function Row({
       </div>
       <div className="requirements__end">
         <RequirementPill state={requirement.state} />
-        {!recording && (
+        {!recording && !readOnly && (
           <Button aria-label={copy.recordLabel(requirement.name)} onClick={onRecord}>
             {copy.record}
           </Button>
@@ -157,7 +162,7 @@ function RecordForm({
           <Textarea {...props} rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
         )}
       </Field>
-      {save.isError && <Banner tone="error">{form.failed}</Banner>}
+      {save.isError && <Banner tone="error">{failedMessage(save.error, form.failed)}</Banner>}
       <div className="member__form-actions">
         <Button disabled={save.isPending} onClick={onCancel}>
           {form.cancel}

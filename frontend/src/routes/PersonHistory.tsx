@@ -24,6 +24,7 @@ import { ChevronRightIcon, CloseIcon } from '../components/icons'
 import { shortDay } from '../format'
 import { Banner, Card, cardClass, PlainList, SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
+import { failedMessage } from './anonymised'
 import { GradeForm } from './GradeForm'
 import './PersonHistory.css'
 import { HISTORY_WINDOW_YEARS, yearsBefore } from './historyWindow'
@@ -43,6 +44,8 @@ type Open = 'menu' | 'start' | 'grade' | 'payments' | null
  * first, each year opening to its payments (#295, "Pagos anteriores")
  * (docs/design/historical-data.md, section 4). Owner and admin only: the ficha draws it
  * with the Libro. Just after "Agregar exalumno" its choices are open, offered (#294).
+ * An anonymous record (#372) keeps its payments to read, with nothing to add or remove
+ * (#581).
  */
 export function PersonHistory({ person }: { person: Person }) {
   const offered = useLocation({ select: (location) => location.state.offerHistory === true })
@@ -52,6 +55,7 @@ export function PersonHistory({ person }: { person: Person }) {
   const payments = useQuery(historyPaymentsQuery(person.id))
   const noPayments = payments.isSuccess && payments.data.years.length === 0
   const scheme = useGradingScheme()
+  const readOnly = person.anonymised === true
   const lines = [
     person.member_since ? copy.memberSince(t.common.dayYear(person.member_since)) : null,
     person.prior_classes > 0 ? copy.priorClasses(person.prior_classes) : null,
@@ -70,7 +74,7 @@ export function PersonHistory({ person }: { person: Person }) {
         ) : (
           noPayments && <span className="member__detail">{copy.empty}</span>
         )}
-        <HistoryYears personId={person.id} onRemoved={() => setDone(copy.remove.done)} />
+        <HistoryYears personId={person.id} readOnly={readOnly} onRemoved={() => setDone(copy.remove.done)} />
         {done && (
           <Banner tone="done">
             {done}
@@ -106,7 +110,7 @@ export function PersonHistory({ person }: { person: Person }) {
               setDone(copy.paymentsForm.saved(count))
             }}
           />
-        ) : (
+        ) : readOnly ? null : (
           <>
             <div className="member__actions">
               <Button
@@ -213,7 +217,7 @@ function StartForm({ person, onCancel, onDone }: { person: Person; onCancel: () 
       )}
       {save.error && (
         <Banner tone="error">
-          {form.failed}
+          {failedMessage(save.error, form.failed)}
         </Banner>
       )}
       <div className="member__form-actions">
@@ -239,7 +243,15 @@ const DEFAULT_PAY_DAY = 5
 const METHODS: readonly HistoryMethod[] = ['transfer', 'cash', 'other']
 
 /** The card's years, each collapsed to its count and total, opening to its payments. */
-function HistoryYears({ personId, onRemoved }: { personId: string; onRemoved: () => void }) {
+function HistoryYears({
+  personId,
+  readOnly,
+  onRemoved,
+}: {
+  personId: string
+  readOnly: boolean
+  onRemoved: () => void
+}) {
   const payments = useQuery(historyPaymentsQuery(personId))
   const [all, setAll] = useState(false)
   const [openYears, setOpenYears] = useState<ReadonlySet<number>>(new Set())
@@ -280,7 +292,7 @@ function HistoryYears({ personId, onRemoved }: { personId: string; onRemoved: ()
               {open && (
                 <Card as="ul" flush className="member__ledger past-pay__payments">
                   {y.payments.map((p) => (
-                    <PaymentLine key={p.id} personId={personId} payment={p} onRemoved={onRemoved} />
+                    <PaymentLine key={p.id} personId={personId} payment={p} readOnly={readOnly} onRemoved={onRemoved} />
                   ))}
                 </Card>
               )}
@@ -310,14 +322,16 @@ function paymentSource(p: HistoryPayment): string {
 }
 
 /** `marzo 2024` · `pagado el 5 mar 2024 · transferencia · Mensual 3x semana` · `$25.000`,
- * opening "Eliminar" with a reason. */
+ * opening "Eliminar" with a reason; with `readOnly`, nothing to press. */
 function PaymentLine({
   personId,
   payment: p,
+  readOnly,
   onRemoved,
 }: {
   personId: string
   payment: HistoryPayment
+  readOnly: boolean
   onRemoved: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -327,16 +341,22 @@ function PaymentLine({
     p.plan_name,
     p.note,
   ]
+  const content = (
+    <>
+      <span className="member__dot" aria-hidden="true" />
+      <span className="member__entry-text">
+        <span className="member__entry-title">{paymentTitle(p)}</span>
+        <span className="member__detail">{detail.filter(Boolean).join(' · ')}</span>
+        <span className="member__detail">{paymentSource(p)}</span>
+      </span>
+      <span className="member__entry-amount">{t.common.clp(p.amount_clp)}</span>
+    </>
+  )
+  if (readOnly) return <li className="member__entry past-pay__payment">{content}</li>
   return (
     <li className="member__entry member__entry--fixable past-pay__payment">
       <button type="button" className="member__entry-button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="member__dot" aria-hidden="true" />
-        <span className="member__entry-text">
-          <span className="member__entry-title">{paymentTitle(p)}</span>
-          <span className="member__detail">{detail.filter(Boolean).join(' · ')}</span>
-          <span className="member__detail">{paymentSource(p)}</span>
-        </span>
-        <span className="member__entry-amount">{t.common.clp(p.amount_clp)}</span>
+        {content}
         <span className="member__entry-chevron" aria-hidden="true">
           <ChevronRightIcon />
         </span>
@@ -402,7 +422,7 @@ function RemoveForm({
       )}
       {remove.error && (
         <Banner tone="error">
-          {words.failed}
+          {failedMessage(remove.error, words.failed)}
         </Banner>
       )}
       <div className="member__form-actions">
@@ -737,7 +757,7 @@ function PaymentsForm({
             ? form.coversPlan(t.common.dayYear(refusedFrom))
             : outsideHistory(save.error)
               ? form.outsideWindow
-              : form.failed}
+              : failedMessage(save.error, form.failed)}
         </Banner>
       )}
       <div className="member__form-actions">

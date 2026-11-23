@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useId, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { holdsAccount, managesGym, type Access } from '../api/me'
 import type { Person } from '../api/member'
 import {
@@ -53,9 +53,12 @@ export function PersonActions({
 }) {
   const [open, setOpen] = useState<Open>(null)
   const [done, setDone] = useState<string | null>(null)
+  // "Dar de baja" asked for from Eliminar's alert, which the form takes the place of.
+  const [revealLeave, setRevealLeave] = useState(false)
   const manages = managesGym(access)
   const toggle = (form: Open) => {
     setDone(null)
+    setRevealLeave(false)
     setOpen(open === form ? null : form)
   }
   const finish = (message: string | null) => {
@@ -102,14 +105,23 @@ export function PersonActions({
           {done}
         </Banner>
       )}
-      {open === 'leave' && <LeaveForm person={person} onCancel={() => setOpen(null)} onDone={finish} />}
+      {open === 'leave' && (
+        <LeaveForm person={person} reveal={revealLeave} onCancel={() => setOpen(null)} onDone={finish} />
+      )}
       {open === 'return' && <ReturnForm person={person} onCancel={() => setOpen(null)} onDone={finish} />}
       {open === 'undoLeave' && person.left_on && undoLeave?.(finish)}
       {open === 'remove' && (
         <RemoveForm
           person={person}
           onCancel={() => setOpen(null)}
-          onLeave={person.left_on ? undefined : () => toggle('leave')}
+          onLeave={
+            person.left_on
+              ? undefined
+              : () => {
+                  toggle('leave')
+                  setRevealLeave(true)
+                }
+          }
         />
       )}
     </section>
@@ -118,14 +130,26 @@ export function PersonActions({
 
 function LeaveForm({
   person,
+  reveal = false,
   onCancel,
   onDone,
 }: {
   person: Person
+  // Opened from Eliminar's alert (#581): its "Cancelar" and "Dar de baja" sit where the
+  // alert's did, so it looks as if nothing happened. Brought into view, its first field
+  // focused, so it is seen to open.
+  reveal?: boolean
   onCancel: () => void
   onDone: (message: string | null) => void
 }) {
   const form = copy.leaveForm
+  const formRef = useRef<HTMLFormElement>(null)
+  const dayRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (!reveal) return
+    formRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+    dayRef.current?.focus({ preventScroll: true })
+  }, [reveal])
   const today = useGymToday()
   const refresh = useRefresh()
   const id = useId()
@@ -157,12 +181,13 @@ function LeaveForm({
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit} noValidate>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit} noValidate>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.on}
       </label>
       <Input
+        ref={dayRef}
         id={id}
         type="date"
         min={earliest || undefined}

@@ -9,7 +9,7 @@ import {
   type AddDependent,
   type PersonRef,
 } from '../api/family'
-import { membersPath, type MemberPage, type MemberRow } from '../api/people'
+import { membersPath, refusedAnonymised, type MemberPage, type MemberRow } from '../api/people'
 import { Button } from '../components/Button'
 import { Input, SearchInput } from '../components/Field'
 import { t } from '../i18n/es'
@@ -24,8 +24,9 @@ const SEARCH_DEBOUNCE_MS = 250
 // How many matches the link search offers.
 const MATCHES = 5
 
-/** A person's guardian or dependents, and the forms that change them. */
-export function FamilyPanel({ person }: { person: PersonRef }) {
+/** A person's guardian or dependents, and the forms that change them: none for an
+ * anonymous record (#372), whose links are gone and stay so (#581). */
+export function FamilyPanel({ person }: { person: PersonRef & { anonymised?: boolean } }) {
   const family = useQuery(familyQuery(person.id))
   const [adding, setAdding] = useState(false)
   const queryClient = useQueryClient()
@@ -41,6 +42,7 @@ export function FamilyPanel({ person }: { person: PersonRef }) {
     onSuccess: invalidate,
   })
   const failed = add.error ?? unlink.error
+  const readOnly = person.anonymised === true
 
   if (family.isPending) return <Loading className="family__note">{copy.loading}</Loading>
   if (family.isError) {
@@ -66,7 +68,7 @@ export function FamilyPanel({ person }: { person: PersonRef }) {
             <Linked
               person={guardian}
               disabled={unlink.isPending}
-              onUnlink={() => unlink.mutate({ guardian: guardian.id, dependent: person.id })}
+              onUnlink={readOnly ? undefined : () => unlink.mutate({ guardian: guardian.id, dependent: person.id })}
             />
           </PlainList>
         </section>
@@ -83,14 +85,14 @@ export function FamilyPanel({ person }: { person: PersonRef }) {
                     key={dependent.id}
                     person={dependent}
                     disabled={unlink.isPending}
-                    onUnlink={() => unlink.mutate({ guardian: person.id, dependent: dependent.id })}
+                    onUnlink={readOnly ? undefined : () => unlink.mutate({ guardian: person.id, dependent: dependent.id })}
                   />
                 ))}
               </PlainList>
             )}
           </section>
           {/* Closed until asked for: most fichas never add anyone (#179). */}
-          {adding ? (
+          {readOnly ? null : adding ? (
             <>
               <NewDependentForm busy={add.isPending} onAdd={(body) => add.mutateAsync(body)} />
               <LinkExisting
@@ -114,6 +116,7 @@ export function FamilyPanel({ person }: { person: PersonRef }) {
 }
 
 function refusal(error: unknown): string {
+  if (refusedAnonymised(error)) return t.admin.member.anonymisedRefused
   const conflict = familyConflict(error)
   if (conflict) return copy.refused[conflict]
   if (error instanceof ApiError && error.status === 422) {
@@ -125,11 +128,20 @@ function refusal(error: unknown): string {
 
 /**
  * A linked person's row: their name, and a quiet "Desvincular" (#241) that asks before
- * it acts, since the link is the whole of what a guardian is for the gym.
+ * it acts, since the link is the whole of what a guardian is for the gym. Without
+ * `onUnlink`, only the name.
  */
-function Linked({ person, disabled, onUnlink }: { person: PersonRef; disabled: boolean; onUnlink: () => void }) {
+function Linked({
+  person,
+  disabled,
+  onUnlink,
+}: {
+  person: PersonRef
+  disabled: boolean
+  onUnlink: (() => void) | undefined
+}) {
   const [asking, setAsking] = useState(false)
-  if (asking) {
+  if (asking && onUnlink) {
     return (
       <li className="family__person family__person--asking" role="group" aria-label={copy.unlinkLabel(person.name)}>
         <p className="family__hint">{copy.unlinkConfirm(person.name)}</p>
@@ -147,7 +159,7 @@ function Linked({ person, disabled, onUnlink }: { person: PersonRef; disabled: b
   return (
     <li className="family__person">
       <span className="family__name">{person.name}</span>
-      <Button
+      {onUnlink && <Button
         variant="ghost"
         className="family__unlink"
         aria-label={copy.unlinkLabel(person.name)}
@@ -155,7 +167,7 @@ function Linked({ person, disabled, onUnlink }: { person: PersonRef; disabled: b
         onClick={() => setAsking(true)}
       >
         {copy.unlink}
-      </Button>
+      </Button>}
     </li>
   )
 }
