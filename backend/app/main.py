@@ -39,6 +39,7 @@ from app.api import (
     member_roll,
     memberships,
     moves,
+    my_data,
     paid_through,
     people,
     plans,
@@ -143,6 +144,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(consent.router)
     app.include_router(consent.mine)
     app.include_router(me.router)
+    app.include_router(my_data.router)
     app.include_router(proofs.router)
     app.include_router(plans.router)
     app.include_router(programs.router)
