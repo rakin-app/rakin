@@ -73,25 +73,21 @@ Gap: #376.
 | --- | --- | --- |
 | The student page shows all stored data | **done** (#371) | "Mis datos" (`/me/datos`, `GET /api/me/data` in `backend/app/api/my_data.py`): every row of every table with a `person_id`, for the person and each dependent, sensitive custom fields included; where the data came from, how long it is kept, and the gym's privacy email to fix it. `tests/test_my_data.py` fails when a new such table is neither exported nor left out with a reason |
 | One-click JSON export | **done** (#371) | "Descargar mis datos": `GET /api/me/data?download=1`, the same document as a file. #63 is the gym-wide export |
-| Deletion that anonymises the person and keeps ledger amounts | **missing** | see below |
+| Deletion that anonymises the person and keeps ledger amounts | **done** (#372) | `anonymise_gym_person` (migration 0099), `POST /api/people/{id}/anonymise` (`backend/app/api/member_roll.py`); `backend/tests/test_anonymise.py` |
 
-What exists is `DELETE /api/people/{id}` (owner only), which calls `forget_gym_person` (migrations 0032, 0044, 0051, 0054, 0055). It **deletes**, it does not anonymise. It **refuses** anyone the gym kept money from (`forget_refusal` returns `payment`; `backend/tests/test_voids.py:358`). So a member who ever paid cannot be deleted at all, which is most real members. It was built for people added by mistake.
+`DELETE /api/people/{id}` (owner only, `forget_gym_person`) deletes someone the gym kept no money from. For a member who paid, Eliminar offers **Anonimizar** (`POST /api/people/{id}/anonymise`, #372) once they are dados de baja and owe nothing. Their memberships, billing periods, ledger amounts and the log's money corrections stay, moved onto a new record, "Exalumno anonimizado", that no row leads from them to. Everything else of theirs in the gym goes: RUT, email, phone, birth date, reason for leaving, ledger notes, custom fields, guardian links, consent records, requirements, grades, `message_log` rows, `auth_session`, `idempotency_key`, their `auth_link` rows to this gym's email, and their proof files. When no other gym knows them, the global `person` row goes too (or keeps only its id while a row still names it).
 
-When it does run, it leaves these behind:
+Both paths now remove what `forget_gym_person` used to leave behind (`message_log`, proof files, `auth_link`, `idempotency_key`, the global `person` row).
 
-- `message_log` rows, with `to_address` and the template `payload` (names, amounts);
-- proof files in object storage, since nothing deletes them;
-- `auth_link` rows with the person's email;
-- `idempotency_key` response bodies that mention them;
-- the global `person` row (name, RUT, email, birth date), which only #69 was meant to erase.
+The 6-year tax retention of name and RUT with the ledger (legal research, question 7) is not implemented. Name and RUT are cleared at once, pending the lawyer's answer to item 2; #378 owns retention.
 
-Gap: #372 (deletion). The view and export were #371.
+The view and export were #371; deletion was #372.
 
 ### Retention: lapsed memberships anonymised at 24 months, proof images deleted 12 months after validation
 
 **Missing.**
 
-The nightly jobs are `freezes`, `billing`, `lapse`, `join_requests`, `schedule`, `statements` and `overdue` (`backend/app/jobs/daily.py:34-46`). The only deletion job is `join_requests`, which deletes requests left for 30 days (`backend/app/jobs/join_requests.py`, `backend/tests/test_join.py:1095`). Nothing anonymises lapsed members, and nothing ever deletes a proof file (`BlobStore.delete` is called only for gym logos, `backend/app/api/gym.py:134`).
+The nightly jobs are `freezes`, `billing`, `lapse`, `join_requests`, `schedule`, `statements` and `overdue` (`backend/app/jobs/daily.py:34-46`). The only deletion job is `join_requests`, which deletes requests left for 30 days (`backend/app/jobs/join_requests.py`, `backend/tests/test_join.py:1095`). Nothing anonymises lapsed members, and no job deletes a proof file by age: only Eliminar and Anonimizar delete a person's (#372, `delete_proofs` in `backend/app/api/member_roll.py`).
 
 Nothing purges these either: `auth_link`, expired `auth_session`, `message_log`, or `idempotency_key` rows for people who never write again (the TTL sweep runs only on that person's next claim, `backend/app/idempotency.py:171-180`).
 
@@ -257,7 +253,7 @@ Gap: #375.
 | Restore rehearsed before the second gym | blocks second gym | ops#2 |
 | Consent record kept past approval, with the notice version, the guardian, and the basis for staff-added members | before paid launch | #370 |
 | The member's own data view and JSON export on `/me` (done) | before paid launch | #371 |
-| Deletion for a member who paid: anonymise instead of refusing, and remove what `forget_gym_person` leaves behind | before paid launch | #372 |
+| Deletion for a member who paid: anonymise instead of refusing, and remove what `forget_gym_person` leaves behind (done) | before paid launch | #372 |
 | Sentry: no request bodies, locals or row values; choose the region (done: US, #430) | before paid launch | #373 |
 | Logs that can scope an incident: gym, person and IP on requests; reads and exports recorded; kept long enough | before paid launch | #374 |
 | A member's request that reaches the company by email | before paid launch | #375 |

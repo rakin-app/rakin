@@ -25,7 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.grading import stored_scheme
-from app.api.people import NOT_FOUND, in_gym
+from app.api.people import NOT_FOUND, in_gym, refuse_anonymised
 from app.domain.dates import add_months, gym_today
 from app.domain.membership import current_first
 from app.permissions import AttendanceSession, StaffSession
@@ -159,6 +159,7 @@ async def award_grade(
     given one: it has no membership."""
     if not await in_gym(session, person_id):
         raise NOT_FOUND
+    await refuse_anonymised(session, person_id)
     gym = await _gym(session, tenant.gym_id)
     scheme = stored_scheme(tenant.gym_id, gym.settings)
 

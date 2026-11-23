@@ -1,7 +1,9 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
 
 from app.api import (
     activities,
@@ -83,6 +85,19 @@ from app.platform.web import build_operator_links, build_platform_router
 from app.sentry import init_sentry
 from app.settings import Settings, get_settings
 
+# What `anonymised_is_final` (migration 0099) raises for a write onto an anonymous record
+# (#372): whichever endpoint wrote it, it is refused, never a 500.
+ANONYMISED_STATE = "RK372"
+
+
+async def anonymised_record(request: Request, error: Exception) -> Response:
+    """A 409 `anonymised` for the guard's refusal; any other database error as it was.
+    The request's transaction has already rolled back: the session's dependency exits
+    on the error before this answers."""
+    if isinstance(error, DBAPIError) and getattr(error.orig, "sqlstate", None) == ANONYMISED_STATE:
+        return JSONResponse({"detail": "anonymised"}, status_code=409)
+    raise error
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
@@ -101,6 +116,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await engine.dispose()
 
     app = FastAPI(title="Rakin API", lifespan=lifespan)
+    app.add_exception_handler(DBAPIError, anonymised_record)
     app.state.settings = settings
     app.state.integrations = build_integrations(settings)
     links = build_magic_links(

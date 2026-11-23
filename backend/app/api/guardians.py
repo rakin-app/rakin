@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.people import NOT_FOUND, add_to_gym, in_gym
+from app.api.people import NOT_FOUND, add_to_gym, in_gym, refuse_anonymised
 from app.domain.dates import gym_today, is_minor
 from app.permissions import MembersAddSession, StaffSession
 from app.schemas.guardians import (
@@ -111,9 +111,11 @@ async def add_dependent(
     """Link `body.person_id`, someone in this gym, or add a new person by name."""
     if not await in_gym(session, person_id):
         raise NOT_FOUND
+    await refuse_anonymised(session, person_id)
     if isinstance(body, LinkDependent):
         if not await in_gym(session, body.person_id):
             raise NOT_FOUND
+        await refuse_anonymised(session, body.person_id)
         dependent = body.person_id
     else:
         dependent = await add_to_gym(session, **body.model_dump())
@@ -126,6 +128,7 @@ async def remove_dependent(
     person_id: uuid.UUID, dependent_id: uuid.UUID, session: MembersAddSession
 ) -> Response:
     """Unlink; both people stay in the gym. A minor still here keeps their guardian: a 422."""
+    await refuse_anonymised(session, person_id)
     dependent = (await session.execute(text(DEPENDENT_AGE), {"id": dependent_id})).one_or_none()
     if (
         dependent is not None

@@ -100,6 +100,7 @@ NOT_EXPORTED: Mapping[str, str] = {
     "idempotency_key": "a request's answer kept a day so a retry is not run twice",
     "audit_event": "the staff's record of what they changed, read only with money_read",
     "terms_acceptance": "the gym's acceptance of Rakin's terms, which the titular signs for it",
+    "person_anonymisation": "empty but while an anonymisation runs (#372), which deletes its row",
 }
 
 # Whose data the page shows: the person acting, then each dependent, by name.

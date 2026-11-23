@@ -39,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.custom_fields import field_cipher, reach_of
 from app.api.history import refuse_outside_history
-from app.api.people import NOT_FOUND, in_gym
+from app.api.people import NOT_FOUND, in_gym, refuse_anonymised
 from app.domain import custom_fields as cf
 from app.domain.dates import gym_today
 from app.domain.membership import LIVE
@@ -362,6 +362,7 @@ async def record_requirement(
     """A new record of it, which becomes the person's current one; the last is kept."""
     if not await in_gym(session, person_id):
         raise NOT_FOUND
+    await refuse_anonymised(session, person_id)
     reach = await _reach(session, tenant)
     # Held to the commit: whether the note is sealed is decided on a settled requirement.
     requirement = await _get(session, reach, requirement_id, lock="SHARE")

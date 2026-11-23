@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.people import NOT_FOUND, read_person
+from app.api.people import NOT_FOUND, read_person, refuse_anonymised
 from app.domain.dates import add_months, gym_today
 from app.permissions import LedgerReadSession, LedgerSession, MembersSession
 from app.schemas.history import (
@@ -132,6 +132,7 @@ async def set_history(
 ) -> Person:
     """Their start and their classes before Rakin, as given. Writing what is already
     there records nothing."""
+    await refuse_anonymised(session, person_id)
     record = (await session.execute(LOCK_HISTORY, {"id": person_id})).one_or_none()
     if record is None:
         raise NOT_FOUND
@@ -279,6 +280,7 @@ async def add_history_payments(
     have been paid twice. Under the person's lock, so their first plan is read once."""
     if (await session.execute(LOCK_PERSON, {"id": person_id})).one_or_none() is None:
         raise NOT_FOUND
+    await refuse_anonymised(session, person_id)
     today = await _today(session, tenant)
     for payment in body.payments:
         refuse_outside_history("paid_on", payment.paid_on, today)
@@ -301,6 +303,7 @@ async def remove_history_payment(
 ) -> HistoryPaymentsRead:
     """Eliminar, for a typo: the payment goes, and a `history_removed` row keeps the
     whole of it and the reason, in the same transaction."""
+    await refuse_anonymised(session, person_id)
     row = (
         await session.execute(DELETE_PAYMENT, {"payment": payment_id, "person": person_id})
     ).one_or_none()

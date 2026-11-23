@@ -1296,6 +1296,31 @@ export const es = {
         },
         failed: 'No pudimos eliminarlo. Inténtalo de nuevo.',
       },
+      // Anonimizar (#372): Eliminar for someone the gym kept money from.
+      anonymiseForm: {
+        title: 'Anonimizar',
+        get intro() {
+          return `${w.ThePlace} recibió pagos de esta persona, así que no se puede eliminar del todo: los montos quedan en las cuentas. Anonimizar borra todo lo demás: nombre, RUT, correo, teléfono, fecha de nacimiento, motivo de baja, campos, apoderado, mensajes, sesiones y comprobantes. Sus planes y pagos quedan en una ficha anónima. No se puede deshacer. Si el pago fue un error, devuélvelo y podrás eliminarlo. El registro ${w.ofThePlace} guarda quién lo anonimizó, cuándo y por qué, sin sus datos.`
+        },
+        submit: 'Anonimizar para siempre',
+        working: 'Anonimizando…',
+        get reasonNeeded() {
+          return `Escribe por qué se anonimiza: queda en el registro ${w.ofThePlace}.`
+        },
+        // What blocks it, and how to clear it.
+        refused: {
+          anonymised: () => 'Ya está anonimizado.',
+          running: () => 'Para anonimizarlo, primero dale de baja: mientras entrena, sus datos se necesitan.',
+          pending: () => 'Tiene un comprobante por validar: valídalo o recházalo primero.',
+          owes: (amount: string) =>
+            `Debe ${amount}: anula sus cargos primero («Anular plan» o «Anular cargo»), o recibe el pago.`,
+          staff: () => `Es parte del equipo ${w.ofThePlace}, o ha dado clases: no se puede anonimizar.`,
+          guardian: () => `Es apoderado de ${w.memberIs('otros', 'otras')} ${w.members}: desvincúlalos en Familia antes de anonimizarlo.`,
+        },
+        failed: 'No pudimos anonimizarlo. Inténtalo de nuevo.',
+      },
+      // The ficha of an anonymous record (#372), in place of its ways out.
+      anonymised: 'Ficha anonimizada: sus datos se borraron y solo quedan sus planes y pagos. No se puede editar.',
       // What an earlier plan, lapsed say, still owes once a new one started (#249).
       earlierDebt: 'Deuda anterior',
       earlierDebtLine: (plan: string, pending: string) => `${plan} · ${pending}`,

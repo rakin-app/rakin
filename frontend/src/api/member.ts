@@ -33,6 +33,9 @@ export type Person = {
   member_since: string | null
   prior_classes: number
   created_at: string
+  // An anonymous record (#372): someone who paid and asked to be deleted, kept for the
+  // books as "Exalumno anonimizado" with nothing about them. Nothing of it is edited.
+  anonymised?: boolean
 }
 
 export type PlanKind = 'monthly' | 'prepaid' | 'fixed_period' | 'credits' | 'dropin' | 'trial'

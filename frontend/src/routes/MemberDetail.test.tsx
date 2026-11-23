@@ -3328,6 +3328,68 @@ describe('the record and the ways out (#157)', () => {
     expect(screen.getByRole('form', { name: copy.leaveForm.title })).toBeInTheDocument()
   })
 
+  it('eliminar offers anonimizar for money the gym kept, and anonymises (#372)', async () => {
+    const calls = stubApi({
+      person: { body: { ...FELIPE, left_on: '2026-10-01' } },
+      extra: (path, method) => {
+        if (path === '/api/people/felipe/deletion') return { body: { refused: 'payment', amount_clp: 45000 } }
+        if (path === '/api/people/felipe/anonymisation') return { body: { refused: null } }
+        if (path === '/api/people/felipe/anonymise' && method === 'POST') return { status: 204 }
+        if (path === '/api/people') return { body: { items: [], total: 0 } }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.remove }))
+    const form = await screen.findByRole('form', { name: copy.anonymiseForm.title })
+    expect(within(form).getByText(copy.anonymiseForm.intro)).toBeInTheDocument()
+    const submit = within(form).getByRole('button', { name: copy.anonymiseForm.submit })
+    expect(submit).toBeDisabled()
+    await userEvent.type(within(form).getByLabelText(copy.removeForm.confirm(FELIPE.name)), 'Felipe Díaz')
+    await userEvent.click(submit)
+    expect(within(form).getByText(copy.anonymiseForm.reasonNeeded)).toBeInTheDocument()
+    await userEvent.type(within(form).getByLabelText(copy.removeForm.reason), 'pidió borrar sus datos')
+    await userEvent.click(submit)
+
+    expect(await screen.findByRole('heading', { name: es.admin.students.title })).toBeInTheDocument()
+    expect(calls.filter((c) => c.path === '/api/people/felipe/anonymise')).toEqual([
+      { method: 'POST', path: '/api/people/felipe/anonymise', body: { reason: 'pidió borrar sus datos' } },
+    ])
+    expect(calls.filter((c) => c.method === 'DELETE')).toEqual([])
+  })
+
+  it('anonimizar asks to dar de baja first while they train (#372)', async () => {
+    stubApi({
+      extra: (path) => {
+        if (path === '/api/people/felipe/deletion') return { body: { refused: 'payment', amount_clp: 45000 } }
+        if (path === '/api/people/felipe/anonymisation') return { body: { refused: 'running' } }
+        return undefined
+      },
+    })
+    renderAt(PATH)
+
+    await userEvent.click(within(await actions()).getByRole('button', { name: copy.remove }))
+    expect(await screen.findByText(copy.anonymiseForm.refused.running())).toBeInTheDocument()
+    const offered = within(await actions()).getAllByRole('button', { name: copy.leave })
+    await userEvent.click(offered.at(-1)!)
+    expect(screen.getByRole('form', { name: copy.leaveForm.title })).toBeInTheDocument()
+  })
+
+  it('an anonymised ficha has no ways out and no edit (#372)', async () => {
+    stubApi({
+      person: {
+        body: { ...FELIPE, name: 'Exalumno anonimizado', phone: null, left_on: '2026-10-01', anonymised: true },
+      },
+    })
+    renderAt(PATH)
+
+    const section = await actions()
+    expect(within(section).getByText(copy.anonymised)).toBeInTheDocument()
+    expect(within(section).queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.editPerson })).not.toBeInTheDocument()
+  })
+
   it('eliminar needs their name typed, then deletes and goes back to the list', async () => {
     const calls = stubApi({
       extra: (path, method) => {

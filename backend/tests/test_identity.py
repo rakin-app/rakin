@@ -68,7 +68,7 @@ def entered(body: dict[str, Any]) -> dict[str, Any]:
     return {
         k: v
         for k, v in body.items()
-        if k not in ("id", "left_on", "left_with", "created_at", "updated_at")
+        if k not in ("id", "left_on", "left_with", "created_at", "updated_at", "anonymised")
     }
 
 
