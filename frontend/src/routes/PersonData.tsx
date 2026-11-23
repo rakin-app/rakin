@@ -85,7 +85,7 @@ export function PersonData({ person }: { person: Person }) {
               {words.saved}
             </Banner>
           )}
-          <div className="member__actions">
+          {!person.anonymised && <div className="member__actions">
             <Button
               // Until the custom fields are read, so the form has them to edit; the note above says so.
               disabled={fields.isPending}
@@ -96,7 +96,7 @@ export function PersonData({ person }: { person: Person }) {
             >
               {copy.editPerson}
             </Button>
-          </div>
+          </div>}
         </Card>
       )}
     </section>

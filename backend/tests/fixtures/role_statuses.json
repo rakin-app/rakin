@@ -374,6 +374,11 @@
     "coach": 404,
     "owner": 404
   },
+  "GET /api/people/{person_id}/anonymisation": {
+    "admin": 403,
+    "coach": 403,
+    "owner": 404
+  },
   "GET /api/people/{person_id}/attendance": {
     "admin": 404,
     "coach": 404,
@@ -916,6 +921,11 @@
   },
   "POST /api/people/former": {
     "admin": 422,
+    "coach": 403,
+    "owner": 422
+  },
+  "POST /api/people/{person_id}/anonymise": {
+    "admin": 403,
     "coach": 403,
     "owner": 422
   },

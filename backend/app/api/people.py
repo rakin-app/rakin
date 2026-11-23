@@ -101,6 +101,7 @@ SELECT_PERSON = f"""
            {missing_rut("gp")} AS missing_rut, {missing_guardian("gp")} AS missing_guardian,
            gp.name, gp.email, gp.rut, gp.dob, gp.left_on, gp.left_reason, gp.member_since,
            gp.prior_classes, gp.created_at, gp.updated_at,
+           gp.anonymised_at IS NOT NULL AS anonymised,
            (SELECT lm.id FROM membership lm JOIN plan lp ON lp.id = lm.plan_id
             WHERE lm.gym_id = gp.gym_id AND lm.person_id = gp.person_id
               AND gp.left_on IS NOT NULL AND lm.cancelled_at = gp.left_at
@@ -346,6 +347,19 @@ async def in_gym(session: AsyncSession, person_id: uuid.UUID) -> bool:
     return bool(found)
 
 
+# An anonymous record (#372) is the books' alone: nothing of it is edited again.
+ANONYMISED = HTTPException(status.HTTP_409_CONFLICT, "anonymised")
+
+
+async def refuse_anonymised(session: AsyncSession, person_id: uuid.UUID) -> None:
+    anonymised = await session.scalar(
+        text("SELECT anonymised_at IS NOT NULL FROM gym_person WHERE person_id = :id"),
+        {"id": person_id},
+    )
+    if anonymised:
+        raise ANONYMISED
+
+
 async def read_person(
     session: AsyncSession, person_id: uuid.UUID, *, sees_reason: bool = False
 ) -> Person:
@@ -573,6 +587,7 @@ async def update_person(
     person_id: uuid.UUID, body: PersonUpdate, session: MembersAddSession, money: SeesMoney
 ) -> Person:
     """Checked first, written second: a refusal writes nothing."""
+    await refuse_anonymised(session, person_id)
     changes = body.model_dump(exclude_unset=True)
     record = (await session.execute(EDITED, {"id": person_id})).one_or_none()
     if record is None:

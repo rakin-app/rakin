@@ -284,6 +284,39 @@ export function deletionRefused(error: unknown): Deletion | null {
   return { refused: code, amount_clp: typeof detail?.amount_clp === 'number' ? detail.amount_clp : null }
 }
 
+/** Why the owner cannot anonymise someone (#372): they already are, have not left or a
+ * plan of theirs runs, a proof waits, they owe, are staff, or answer for a dependent. */
+export const ANONYMISE_REFUSALS = ['anonymised', 'running', 'pending', 'owes', 'staff', 'guardian'] as const
+export type AnonymiseRefusal = (typeof ANONYMISE_REFUSALS)[number]
+
+/** Whether they can be anonymised; `amount_clp` is what an `owes` is about. */
+export type Anonymisation = { refused: AnonymiseRefusal | null; amount_clp?: number | null }
+
+export function anonymisationQuery(id: string) {
+  return queryOptions({
+    queryKey: ['people', 'anonymisation', id],
+    queryFn: () => apiFetch<Anonymisation>(`/api/people/${encodeURIComponent(id)}/anonymisation`),
+  })
+}
+
+/** Anonimizar (#372), with the reason the gym's log keeps: for someone the gym kept money
+ * from, whose books stay on an anonymous record. */
+export function anonymisePerson(id: string, reason: string): Promise<void> {
+  return apiFetch<void>(`/api/people/${encodeURIComponent(id)}/anonymise`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
+}
+
+/** The 409's refusal, when the API kept someone `anonymisePerson` was asked to anonymise. */
+export function anonymiseRefused(error: unknown): Anonymisation | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const detail = (error.body as { detail?: { code?: unknown; amount_clp?: unknown } } | undefined)?.detail
+  const code = ANONYMISE_REFUSALS.find((c) => c === detail?.code)
+  if (!code) return null
+  return { refused: code, amount_clp: typeof detail?.amount_clp === 'number' ? detail.amount_clp : null }
+}
+
 /** Someone in the gym already has the RUT, or the email: who, to
  * open them instead. */
 export type Duplicate = { code: 'rut_in_gym' | 'email_in_gym'; person_id: string }

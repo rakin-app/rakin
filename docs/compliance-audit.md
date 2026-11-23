@@ -73,19 +73,15 @@ Gap: #376.
 | --- | --- | --- |
 | The student page shows all stored data | **missing** | `GET /api/me/page` (`backend/app/api/me.py:279`, `MyPage` in `backend/app/schemas/me.py:68`) shows name, plan, payments, rank, attendance and cobros. It does not show the RUT, email, phone, birth date, guardian, custom fields or message history |
 | One-click JSON export | **missing** | no endpoint. #63 is the gym-wide export, not the member's |
-| Deletion that anonymises the person and keeps ledger amounts | **missing** | see below |
+| Deletion that anonymises the person and keeps ledger amounts | implemented (#372) | `anonymise_gym_person` (migration 0098), `POST /api/people/{id}/anonymise` (`backend/app/api/member_roll.py`); `backend/tests/test_anonymise.py` |
 
-What exists is `DELETE /api/people/{id}` (owner only), which calls `forget_gym_person` (migrations 0032, 0044, 0051, 0054, 0055). It **deletes**, it does not anonymise. It **refuses** anyone the gym kept money from (`forget_refusal` returns `payment`; `backend/tests/test_voids.py:358`). So a member who ever paid cannot be deleted at all, which is most real members. It was built for people added by mistake.
+`DELETE /api/people/{id}` (owner only, `forget_gym_person`) deletes someone the gym kept no money from. For a member who paid, Eliminar offers **Anonimizar** (`POST /api/people/{id}/anonymise`, #372) once they are dados de baja and owe nothing. Their memberships, billing periods, ledger amounts and the log's money corrections stay, moved onto a new record, "Exalumno anonimizado", that no row leads from them to. Everything else of theirs in the gym goes: RUT, email, phone, birth date, reason for leaving, ledger notes, custom fields, guardian links, consent records, requirements, grades, `message_log` rows, `auth_session`, `idempotency_key`, their `auth_link` rows to this gym's email, and their proof files. When no other gym knows them, the global `person` row goes too (or keeps only its id while a row still names it).
 
-When it does run, it leaves these behind:
+Both paths now remove what `forget_gym_person` used to leave behind (`message_log`, proof files, `auth_link`, `idempotency_key`, the global `person` row).
 
-- `message_log` rows, with `to_address` and the template `payload` (names, amounts);
-- proof files in object storage, since nothing deletes them;
-- `auth_link` rows with the person's email;
-- `idempotency_key` response bodies that mention them;
-- the global `person` row (name, RUT, email, birth date), which only #69 was meant to erase.
+The 6-year tax retention of name and RUT with the ledger (legal research, question 7) is not implemented. Name and RUT are cleared at once, pending the lawyer's answer to item 2; #378 owns retention.
 
-Gap: #371 (view and export) and #372 (deletion).
+Gap: #371 (view and export).
 
 ### Retention: lapsed memberships anonymised at 24 months, proof images deleted 12 months after validation
 
@@ -257,7 +253,7 @@ Gap: #375.
 | Restore rehearsed before the second gym | blocks second gym | ops#2 |
 | Consent record kept past approval, with the notice version, the guardian, and the basis for staff-added members | before paid launch | #370 |
 | The member's own data view and JSON export on `/me` | before paid launch | #371 |
-| Deletion for a member who paid: anonymise instead of refusing, and remove what `forget_gym_person` leaves behind | before paid launch | #372 |
+| Deletion for a member who paid: anonymise instead of refusing, and remove what `forget_gym_person` leaves behind | done | #372 |
 | Sentry: no request bodies, locals or row values; choose the region (done: US, #430) | before paid launch | #373 |
 | Logs that can scope an incident: gym, person and IP on requests; reads and exports recorded; kept long enough | before paid launch | #374 |
 | A member's request that reaches the company by email | before paid launch | #375 |

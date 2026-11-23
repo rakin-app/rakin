@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.people import NOT_FOUND, in_gym
+from app.api.people import NOT_FOUND, in_gym, refuse_anonymised
 from app.domain import custom_fields as cf
 from app.permissions import (
     FORBIDDEN,
@@ -333,6 +333,7 @@ async def update_person_fields(
 ) -> list[PersonField]:
     if not await in_gym(session, person_id):
         raise NOT_FOUND
+    await refuse_anonymised(session, person_id)
     cipher = field_cipher(request)
     await write_person_fields(session, tenant, cipher, person_id, body.values)
     return await _person_fields(session, tenant, cipher, person_id)

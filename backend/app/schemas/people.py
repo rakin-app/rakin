@@ -139,6 +139,9 @@ class Person(BaseModel):
     # When this gym added them, not when the identity was first seen.
     created_at: datetime
     updated_at: datetime
+    # An anonymous record (#372): someone who paid and asked to be deleted, kept for the
+    # books with nothing about them. Nothing of it can be edited.
+    anonymised: bool = False
 
 
 # `rut_in_gym`: the RUT is already someone's in this gym; `email_in_gym`: someone
@@ -360,6 +363,32 @@ class ForgetRefused(BaseModel):
     dependent."""
 
     detail: ForgetConflict
+
+
+# Why someone cannot be anonymised (`anonymise_refusal`, 0098): `anonymised`, they
+# already are; `running`, they are not dado de baja or a plan of theirs has not ended;
+# `pending`, a proof waits; `owes`, a charge not voided is owed; `staff` and `guardian`
+# as for a deletion. Money the gym kept is no reason: the books keep it.
+AnonymiseCode = Literal["anonymised", "running", "pending", "owes", "staff", "guardian"]
+
+
+class AnonymiseConflict(BaseModel):
+    code: AnonymiseCode
+    # What is owed, on `owes`.
+    amount_clp: int | None = None
+
+
+class Anonymisation(BaseModel):
+    """Whether they can be anonymised: `refused` says why not, null when they can."""
+
+    refused: AnonymiseCode | None
+    amount_clp: int | None = None
+
+
+class AnonymiseRefused(BaseModel):
+    """409 body: why they were not anonymised."""
+
+    detail: AnonymiseConflict
 
 
 class MembershipSummary(BaseModel):

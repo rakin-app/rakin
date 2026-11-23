@@ -36,14 +36,22 @@ gym's records of someone (`forget_gym_person`, 0044), with a reason the gym's lo
 Their ledger goes too once nothing in it holds money: a test student whose charges were
 voided is deleted, one the gym kept a payment of is not until it is refunded (#256).
 Otherwise it answers why not, and how much it is about; `GET .../deletion` answers the
-same without deleting.
+same without deleting. Their messages, sign-in links, idempotency keys and proof files
+go with them, and so does the global person when no other gym knows them (#372).
+
+`POST .../anonymise` is Anonimizar (#372), for someone the gym kept money from, once
+they are dados de baja and owe nothing: the books stay on an anonymous record, and
+everything else of theirs goes as for a deletion (`anonymise_gym_person`, 0098).
+`GET .../anonymisation` says whether it would, and if not why.
 
 Adding, leaving, returning and the welcome are for whoever manages the members
 (`members_manage`), and the plan one starts on for whoever records money too
 (`money_write`, a 403 without it). Deleting is the titular's alone.
 """
 
+import logging
 import uuid
+from dataclasses import dataclass
 from datetime import date
 from typing import Annotated
 
@@ -69,6 +77,7 @@ from app.api.people import (
     in_gym,
     join_gym,
     read_person,
+    refuse_anonymised,
     refuse_email_in_gym,
 )
 from app.contacts import contact_for
@@ -76,11 +85,16 @@ from app.domain import membership as domain
 from app.domain.billing import settled_amount
 from app.domain.dates import gym_today, is_minor
 from app.domain.membership import MembershipStatus, PlanKind, current_first
+from app.integrations import Integrations, get_integrations
+from app.integrations.blobstore import BlobStore
 from app.notices import Notices, get_notices, mail_address
 from app.permissions import MembersSession, OwnerSession, Permission, holds
 from app.schemas.guardians import FamilyConflict, FamilyRefused
 from app.schemas.people import (
     MINOR_NEEDS_GUARDIAN,
+    Anonymisation,
+    AnonymiseConflict,
+    AnonymiseRefused,
     Deletion,
     Enrolment,
     ExistingGuardian,
@@ -97,6 +111,8 @@ from app.schemas.people import (
     WelcomeState,
 )
 from app.tenancy import Tenant, current_tenant
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/people", tags=["people"])
 
@@ -299,6 +315,7 @@ async def return_to_gym(
     if they have not left."""
     if body.membership is not None and not await holds(session, tenant, Permission.MONEY_WRITE):
         raise PLAN_IS_MONEY
+    await refuse_anonymised(session, person_id)
     record = (await session.execute(LOCK_LEFT, {"id": person_id})).one_or_none()
     if record is None:
         raise NOT_FOUND
@@ -442,16 +459,63 @@ async def deletion(person_id: uuid.UUID, session: OwnerSession) -> Deletion:
     return Deletion(refused=code, amount_clp=amount)
 
 
+# Their proof files here: every one they uploaded, and those on their entries that no
+# one else's entry also claims, as a guardian's one transfer for two children does.
+THEIR_PROOFS = text(
+    f"""
+    SELECT DISTINCT e.proof_object_key FROM ({THEIR_ENTRIES}) e
+    WHERE e.proof_object_key IS NOT NULL AND NOT EXISTS (
+        SELECT FROM ledger_entry o
+        WHERE o.proof_object_key = e.proof_object_key
+          AND o.id NOT IN (SELECT x.id FROM ({THEIR_ENTRIES}) x)
+    )
+    """
+)
+
+
+@dataclass(frozen=True)
+class Proofs:
+    """The proof files of someone leaving the gym's records, to delete once they have."""
+
+    prefix: str
+    keys: tuple[str, ...]
+
+
+async def their_proofs(session: AsyncSession, tenant: Tenant, person_id: uuid.UUID) -> Proofs:
+    keys = (await session.scalars(THEIR_PROOFS, {"id": person_id})).all()
+    return Proofs(f"proofs/{tenant.gym_id}/{person_id}/", tuple(sorted(keys)))
+
+
+async def delete_proofs(store: BlobStore, proofs: Proofs) -> None:
+    """After the answer, once the rows naming them are gone. A file left behind is
+    still theirs: log it, so it is deleted by hand."""
+    try:
+        await store.delete_under(proofs.prefix)
+        for key in proofs.keys:
+            await store.delete(key)
+    except Exception:
+        logger.exception("proof files not deleted", extra={"prefix": proofs.prefix})
+
+
 @router.delete(
     "/{person_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={status.HTTP_409_CONFLICT: {"model": ForgetRefused}},
 )
-async def forget(person_id: uuid.UUID, body: Forgetting, session: OwnerSession) -> Response:
+async def forget(
+    person_id: uuid.UUID,
+    body: Forgetting,
+    session: OwnerSession,
+    tenant: CurrentTenant,
+    integrations: Annotated[Integrations, Depends(get_integrations)],
+    background: BackgroundTasks,
+) -> Response:
     """Eliminar: this gym's records of them, gone, their voided charges with them, and a
     row in the gym's log saying who, when and why, with nothing about them. Refused,
     writing nothing, while the gym holds money of theirs or a proof of theirs waits,
-    while they owe a charge not voided, or are staff, or answer for a dependent."""
+    while they owe a charge not voided, or are staff, or answer for a dependent. Their
+    proof files go after the answer."""
+    proofs = await their_proofs(session, tenant, person_id)
     code = await session.scalar(
         text("SELECT forget_gym_person(:id, :reason)"), {"id": person_id, "reason": body.reason}
     )
@@ -462,4 +526,51 @@ async def forget(person_id: uuid.UUID, body: Forgetting, session: OwnerSession) 
         raise HTTPException(
             status.HTTP_409_CONFLICT, ForgetConflict(code=code, amount_clp=amount).model_dump()
         )
+    background.add_task(delete_proofs, integrations.blob_store, proofs)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{person_id}/anonymisation")
+async def anonymisation(person_id: uuid.UUID, session: OwnerSession) -> Anonymisation:
+    """Whether `POST .../anonymise` would anonymise them, and if not why: for the screen
+    to offer it where a deletion is refused for the money the gym kept."""
+    code = await session.scalar(text("SELECT anonymise_refusal(:id)"), {"id": person_id})
+    if code == "not_found":
+        raise NOT_FOUND
+    amount = None if code is None else await forget_amount(session, person_id, code)
+    return Anonymisation(refused=code, amount_clp=amount)
+
+
+@router.post(
+    "/{person_id}/anonymise",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={status.HTTP_409_CONFLICT: {"model": AnonymiseRefused}},
+)
+async def anonymise(
+    person_id: uuid.UUID,
+    body: Forgetting,
+    session: OwnerSession,
+    tenant: CurrentTenant,
+    integrations: Annotated[Integrations, Depends(get_integrations)],
+    background: BackgroundTasks,
+) -> Response:
+    """Anonimizar (#372): for someone the gym kept money from, who has left and asked to
+    be deleted. The books stay, on an anonymous record ("Exalumno anonimizado") that
+    nothing leads from them to; everything else of theirs here goes, their proof files
+    after the answer, and the gym's log keeps who did it, when and why
+    (`anonymise_gym_person`, 0098). Refused, writing nothing, for `anonymise_refusal`'s
+    reasons."""
+    proofs = await their_proofs(session, tenant, person_id)
+    code = await session.scalar(
+        text("SELECT anonymise_gym_person(:id, :reason)"),
+        {"id": person_id, "reason": body.reason},
+    )
+    if code == "not_found":
+        raise NOT_FOUND
+    if code is not None:
+        amount = await forget_amount(session, person_id, code)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, AnonymiseConflict(code=code, amount_clp=amount).model_dump()
+        )
+    background.add_task(delete_proofs, integrations.blob_store, proofs)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

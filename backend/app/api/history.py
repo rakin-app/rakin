@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.people import NOT_FOUND, read_person
+from app.api.people import NOT_FOUND, read_person, refuse_anonymised
 from app.domain.dates import add_months, gym_today
 from app.permissions import LedgerReadSession, LedgerSession, MembersSession
 from app.schemas.history import (
@@ -132,6 +132,7 @@ async def set_history(
 ) -> Person:
     """Their start and their classes before Rakin, as given. Writing what is already
     there records nothing."""
+    await refuse_anonymised(session, person_id)
     record = (await session.execute(LOCK_HISTORY, {"id": person_id})).one_or_none()
     if record is None:
         raise NOT_FOUND
