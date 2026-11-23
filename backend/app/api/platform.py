@@ -325,6 +325,7 @@ async def gym_detail(
         terms_version=PROCESSOR_TERMS_VERSION,
         service_terms_version=SERVICE_TERMS_VERSION,
         terms_state=row.terms_state,
+        terms_exempt=row.terms_exempt,
         aliases=[
             SlugAlias(slug=a["slug"], address=hosts.base_url(a["slug"]), until=a["until"])
             for a in row.aliases

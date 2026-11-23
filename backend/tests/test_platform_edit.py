@@ -278,6 +278,23 @@ def test_the_current_terms_are_recorded_once_and_keep_their_first_date(panel: Pa
     ]
 
 
+def test_the_detail_says_when_a_gym_is_current_by_exemption(panel: Panel) -> None:
+    # Its terms current with nothing accepted (#559): the panel says why, not that
+    # the titular has yet to accept them.
+    _, signing_in = signed_in(panel)
+    slug = new_slug()
+    with signing_in as client:
+        gym_id = create(client, slug)
+        pending = client.get(f"/api/platform/gyms/{gym_id}").json()
+        run(
+            panel.db.admin_url,
+            lambda c: c.execute("UPDATE gym_terms SET exempt = true WHERE gym_id = $1", gym_id),
+        )
+        exempt = client.get(f"/api/platform/gyms/{gym_id}").json()
+    assert (pending["terms_state"], pending["terms_exempt"]) == ("pending", False)
+    assert (exempt["terms"], exempt["terms_state"], exempt["terms_exempt"]) == ([], "current", True)
+
+
 @pytest.mark.parametrize(
     ("signed_on", "kind"),
     [
