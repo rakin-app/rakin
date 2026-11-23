@@ -86,7 +86,7 @@ import { EmailReminder } from '../components/EmailReminder'
 import { FreezeRequestRow } from '../components/FreezeRequests'
 import { ReminderLink } from '../components/ReminderLink'
 import { StatusPill } from '../components/StatusPill'
-import { addDays, isoDay, monthName, monthYear, shortDay } from '../format'
+import { addDays, isoDay, monthName, monthYear, shortDate, shortDay } from '../format'
 import { Banner, Card, cardClass, CheckRow, PlainList, SectionHeader } from '../components/Card'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
@@ -202,18 +202,12 @@ export function MemberDetail() {
       subtitle={rank ? copy.rankSince(rankLabel(rank), since) : copy.since(since)}
       action={readOnly ? undefined : <HeaderWhatsApp person={person.data} money={money} />}
     >
-      {person.data.left_on && (
-        <Banner tone="error" role="status">
-          {copy.leftBanner(t.common.day(person.data.left_on))}
-          {/* Only the owner and admins are ever sent it (#294). */}
-          {person.data.left_reason && (
-            <>
-              <br />
-              {copy.leftBannerReason(person.data.left_reason)}
-            </>
-          )}
-        </Banner>
-      )}
+      <LeftBanner
+        person={person.data}
+        // A mistaken Dar de baja undone in one step, their plan with them (#549). It writes
+        // money and returns them to the list: both permissions, as the API asks.
+        undoable={!readOnly && holds(access.data, 'money_write') && holds(access.data, 'members_manage')}
+      />
       {/* On a desktop the money on the left, everything else beside it. */}
       <Grid className="member__columns">
         <div className="member__column">
@@ -262,20 +256,64 @@ export function MemberDetail() {
           <PersonData person={person.data} />
           <PersonConsent person={person.data} />
           <PersonWelcome person={person.data} access={access.data} />
-          <PersonActions
-            person={person.data}
-            access={access.data}
-            // A mistaken Dar de baja undone in one step, their plan with them (#549).
-            undoLeave={
-              // It writes money and returns them to the list: both permissions, as the API asks.
-              holds(access.data, 'money_write') && holds(access.data, 'members_manage') && person.data.left_with
-                ? (close) => <ReactivateForm mode="uncancel" membership={{ id: person.data.left_with ?? '' }} onCancel={() => close(null)} onDone={close} />
-                : undefined
-            }
-          />
+          <PersonActions person={person.data} access={access.data} />
         </div>
       </Grid>
     </Shell>
+  )
+}
+
+/**
+ * "Dado de baja" at the top of a ficha (#294): since when, and why for the owner and
+ * admins. Something to know, not a failure. With `undoable` and a plan their Dar de baja
+ * ended, it carries "Deshacer la baja" itself (#568), the form opening under it, and one
+ * line on how that differs from "Reactivar" at the foot of the ficha: on a phone the foot
+ * is screens away from the banner that announces the baja.
+ */
+function LeftBanner({ person, undoable }: { person: Person; undoable: boolean }) {
+  const [undoing, setUndoing] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
+  const plan = person.left_with
+  const canUndo = undoable && plan !== null && plan !== undefined
+  return (
+    <>
+      {person.left_on && (
+        <Banner tone="warning" as="div" role="status" className="member__left">
+          <p>
+            {copy.leftBanner(shortDate(person.left_on))}
+            {/* Only the owner and admins are ever sent it (#294). */}
+            {person.left_reason && (
+              <>
+                <br />
+                {copy.leftBannerReason(person.left_reason)}
+              </>
+            )}
+          </p>
+          {canUndo && (
+            <>
+              <p>{copy.undoLeaveHint}</p>
+              <div className="member__actions">
+                <Button aria-expanded={undoing} onClick={() => setUndoing(!undoing)}>
+                  {copy.undoLeave}
+                </Button>
+              </div>
+            </>
+          )}
+        </Banner>
+      )}
+      {person.left_on && canUndo && undoing && (
+        <ReactivateForm
+          mode="uncancel"
+          membership={{ id: plan }}
+          onCancel={() => setUndoing(false)}
+          onDone={(message) => {
+            setUndoing(false)
+            setDone(message)
+          }}
+        />
+      )}
+      {done && <Banner tone="done">{done}</Banner>}
+    </>
   )
 }
 
@@ -899,8 +937,10 @@ function Actions({
 }
 
 /** A line's fixes, opened in place under it (#279): one chip per fix that applies to it,
- * then the chosen one's form, the first to begin with. A lone fix is no choice: it is
- * named in the title, with no chip (#419). */
+ * then the chosen one's form. None is chosen to begin with (#568): the first may be one
+ * that cannot be used yet ("Mover" with every period's proof waiting), and a form opened
+ * unasked looks like the one to use. A lone fix is no choice: it is named in the title,
+ * with no chip, and its form open (#419). */
 function Fixes<F extends string>({
   title,
   fixes,
@@ -912,11 +952,11 @@ function Fixes<F extends string>({
   label: (fix: F) => string
   children: (fix: F) => ReactNode
 }) {
-  const [picked, setPicked] = useState<F>(fixes[0])
-  const fix = fixes.includes(picked) ? picked : fixes[0]
+  const [picked, setPicked] = useState<F | null>(null)
+  const fix = fixes.length === 1 ? fixes[0] : picked !== null && fixes.includes(picked) ? picked : null
   return (
     <div className="member__fix" role="group" aria-label={title}>
-      <span className="member__fix-title">{fixes.length === 1 ? copy.fix.only(title, label(fix)) : title}</span>
+      <span className="member__fix-title">{fixes.length === 1 ? copy.fix.only(title, label(fixes[0])) : title}</span>
       {fixes.length > 1 && (
         <div className="member__fix-choices">
           {fixes.map((f) => (
@@ -926,7 +966,7 @@ function Fixes<F extends string>({
           ))}
         </div>
       )}
-      {children(fix)}
+      {fix !== null && children(fix)}
     </div>
   )
 }
@@ -1346,6 +1386,7 @@ function WriteOffForm({
         words={form}
         submit={form.submit(owed)}
         confirm={form.confirm(owed)}
+        variant="danger"
         onCancel={onCancel}
       />
     </form>
@@ -2551,6 +2592,8 @@ function ChangeAmountForm({
         words={form}
         submit={form.submit(clp(value))}
         confirm={form.confirm(clp(value))}
+        // Nothing to change until the amount differs (#568).
+        disabled={change === 0}
         onCancel={onCancel}
       />
     </form>
@@ -2653,6 +2696,12 @@ function MoveForm({
         <p className="member__detail">{targets.length === 0 ? form.none : form.allPending}</p>
         <div className="member__form-actions">
           <Button onClick={onCancel}>{form.cancel}</Button>
+          {/* Where the waiting proof is reviewed, so the block is not a dead end (#568). */}
+          {targets.length > 0 && (
+            <Link to="/admin/pagos/comprobantes" className={buttonClass({ variant: 'primary' })}>
+              {form.review}
+            </Link>
+          )}
         </div>
       </div>
     )
@@ -2856,6 +2905,7 @@ function VoidPaymentForm({
         words={form}
         submit={form.submit(clp(back))}
         confirm={form.confirm(clp(back))}
+        variant="danger"
         onCancel={onCancel}
       />
     </form>
