@@ -7,7 +7,7 @@
     docker compose up -d --wait && make seed
     uv run --with playwright==1.65.2 playwright install chromium   # once
     uv run site/screenshots.py [--scene NAME]... [--only NAME]...
-    uv run site/screenshots.py --hero   # the hero's widths and the AVIFs again, from the 2× on disk
+    uv run site/screenshots.py --hero   # the hero's widths again, from the 2× on disk
 
 Writes, for each shot, `site/img/<name>-2x.webp` and `<name>-1x.webp`, the screen
 taken at 2× (a phone at 390×844, a computer at 1280×800) and cropped to what the shot
@@ -76,9 +76,6 @@ DESKTOP = {"viewport": {"width": 1280, "height": 800}, "device_scale_factor": 2}
 # The hero's captures (#461), and the scales each comes in beside 1× and 2×: the
 # computer's shows 900 CSS pixels wide, the phone's 302.
 HERO = {"hoy-1280": (0.75, 1.5), "hoy-390": (1.5,)}
-# Shots added since (#563) come in AVIF too, at 1× and 2× only: the page shows them in a
-# `<picture>` with `sizes`, like the hero, but lazy.
-AVIF = {"finanzas-390": ()}
 
 # Words that would make the page read as a martial-arts app. In the neutral scene a
 # shot whose screen holds one of them fails, so a seed or screen change cannot slip
@@ -104,6 +101,7 @@ UPDATE class_type SET name = {open_mat} WHERE kind = 'open_mat';
 UPDATE block_kind SET name = {practice} WHERE is_sparring;
 UPDATE block_kind SET name = {drilling}
     WHERE id = md5(gym_id::text || '/block_kind/drilling')::uuid;
+{data}
 COMMIT;
 """
 
@@ -200,6 +198,8 @@ class Scene:
     shots: tuple[Shot, ...] = ()
     loops: tuple[Loop, ...] = ()
     sport_free: bool = False
+    # More SQL for the scene's shots, run in the same transaction.
+    data: str = ""
 
     def sql(self) -> str:
         def lit(value: object) -> str:
@@ -219,6 +219,7 @@ class Scene:
             open_mat=lit(self.open_mat),
             practice=lit(self.practice),
             drilling=lit(self.drilling),
+            data=self.data,
         )
 
 
@@ -289,6 +290,16 @@ def take_attendance(rec: Recorder) -> None:
     rec.hold(1.4)
 
 
+# The polerones the seed's cobro extra pays back (backend/app/seed/build.py, `_expenses`)
+# are bought the month before their cuotas fall due, so the seed's month on Finanzas
+# reads "gastos recuperados: $0 pagado". The neutral scene buys them on the month's
+# first day, and the academia scene puts them back on the seed's date: its as-of date,
+# plus the cobro's `due_in` (-10 days), less 25.
+POLERONES = "UPDATE expense SET spent_on = {day} WHERE extra_charge_id IS NOT NULL"
+AS_OF = "(SELECT (settings #>> '{seed,as_of}')::date FROM gym WHERE slug = 'academia-sur')"
+POLERONES_THIS_MONTH = POLERONES.format(day=f"date_trunc('month', {AS_OF})::date") + ";"
+POLERONES_AS_SEEDED = POLERONES.format(day=f"{AS_OF} - 35") + ";"
+
 NEUTRAL_WORDS = None  # today's: academia, alumnos, profe
 
 SCENES = (
@@ -303,6 +314,7 @@ SCENES = (
         practice="Práctica libre",
         drilling="Ejercicios",
         sport_free=True,
+        data=POLERONES_THIS_MONTH,
         shots=(
             # The hero: Hoy on the computer, and on the phone.
             Shot("hoy-1280", OWNER, "/admin", DESKTOP),
@@ -422,6 +434,7 @@ SCENES = (
         open_mat="Open mat",
         practice="Sparring",
         drilling="Drilling",
+        data=POLERONES_AS_SEEDED,
         shots=(
             Shot(
                 "actividad-academia-390",
@@ -581,14 +594,14 @@ def save(image: Image.Image, name: str) -> None:
     half = image.resize((image.width // 2, image.height // 2), Image.Resampling.LANCZOS)
     half.save(IMG / f"{name}-1x.webp", "WEBP", quality=82, method=6)
     print(f"ok   - {name} ({half.width}×{half.height})")
-    if name in HERO or name in AVIF:
+    if name in HERO:
         hero(image, name)
 
 
 def hero(image: Image.Image, name: str) -> None:
     """The hero's widths of the 2× capture `image`: WebP at the scales `save` does not
     write, and AVIF at every one."""
-    scales = sorted({1, 2, *{**HERO, **AVIF}[name]})
+    scales = sorted({1, 2, *HERO[name]})
     for scale in scales:
         size = (round(image.width * scale / 2), round(image.height * scale / 2))
         scaled = image if scale == 2 else image.resize(size, Image.Resampling.LANCZOS)
@@ -679,7 +692,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     if args.hero:
-        for name in {**HERO, **AVIF}:
+        for name in HERO:
             hero(Image.open(IMG / f"{name}-2x.webp").convert("RGB"), name)
         return
     scenes = [s for s in SCENES if not args.scene or s.name in args.scene]

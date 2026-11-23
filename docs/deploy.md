@@ -192,7 +192,7 @@ uv run --with playwright==1.65.2 playwright install chromium   # once
 uv run site/screenshots.py            # or --only hoy-390, repeatable
 ```
 
-The hero's two screens, `hoy-390` and `hoy-1280`, are the page's LCP image (#461): the script also writes them at in-between widths and in AVIF, and the page preloads them. Shots added since (`AVIF` in the script, such as `finanzas-390`) also come in AVIF, at 1× and 2× only, and load lazily. `uv run site/screenshots.py --hero` writes those again from the 2× captures on disk, with no stack. The loops' posters are set by the page's script once the page has loaded, so they never share the line with the hero.
+The hero's two screens, `hoy-390` and `hoy-1280`, are the page's LCP image (#461): the script also writes them at in-between widths and in AVIF, and the page preloads them. `uv run site/screenshots.py --hero` writes those again from the 2× captures on disk, with no stack. The loops' posters are set by the page's script once the page has loaded, so they never share the line with the hero.
 
 The contact address is `CONTACT_EMAIL` in `site/build.py`.
 
