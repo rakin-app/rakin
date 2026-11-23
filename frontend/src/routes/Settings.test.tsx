@@ -112,6 +112,9 @@ type Stub = {
   changeActivity?: Answer
   // A monthly plan's anchor change quoted (#547); by default one member it would move.
   anchorQuote?: AnchorMoves
+  // Every read of the plans after the first never answers (#558): what the list shows
+  // after a save is the save's own answer.
+  holdPlans?: boolean
 }
 
 const BJJ: Activity = {
@@ -137,6 +140,7 @@ function stubApi({
   activities = [BJJ],
   changeActivity,
   anchorQuote = ON_MONTHLY,
+  holdPlans = false,
 }: Stub = {}) {
   const calls: Call[] = []
   let current = SETTINGS
@@ -150,6 +154,10 @@ function stubApi({
       const raw = init?.body
       const body: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw
       calls.push({ method, path: `${url.pathname}${url.search}`, body })
+      const plansRead = calls.filter((c) => c.method === 'GET' && c.path === '/api/plans').length
+      if (holdPlans && method === 'GET' && url.pathname === '/api/plans' && plansRead > 1) {
+        return new Promise<Response>(() => {})
+      }
       const answer = route(url.pathname, method, body as Record<string, unknown>)
       return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), {
         status: answer.status ?? 200,
@@ -947,6 +955,28 @@ describe('Ajustes: Planes', () => {
     expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([
       { anchor: 'first', move_members: true },
     ])
+  })
+
+  it("shows a save in the plan's row with the notice, before the list is read again (#558)", async () => {
+    const calls = stubApi({ holdPlans: true })
+    renderAt('/admin/ajustes/planes')
+
+    const section = await screen.findByRole('region', { name: plans.title })
+    const rows = await within(section).findAllByRole('listitem')
+    await userEvent.click(within(rows[0]!).getByRole('button'))
+    const edit = within(section).getByRole('form', { name: form.edit('Mensual adultos') })
+    await userEvent.selectOptions(within(edit).getByLabelText(form.anchor), plans.anchors.first)
+    await userEvent.click(await within(edit).findByRole('checkbox', { name: form.anchorMove.offer(1, 'first') }))
+    await userEvent.clear(within(edit).getByLabelText(form.price))
+    await userEvent.type(within(edit).getByLabelText(form.price), '38.000')
+    await userEvent.click(within(edit).getByRole('button', { name: form.submit }))
+
+    expect(await within(section).findByRole('status')).toHaveTextContent(plans.savedMoved('Mensual adultos', 1))
+    expect(within(section).getAllByRole('listitem')[0]).toHaveTextContent(
+      plans.row(plans.kinds.monthly, plans.row('$38.000 al mes', plans.anchors.first)),
+    )
+    // The list was asked for again, and has not answered.
+    expect(calls.filter((c) => c.method === 'GET' && c.path === '/api/plans')).toHaveLength(2)
   })
 
   it('changes the anchor alone when the owner leaves the members on their day (#547)', async () => {
