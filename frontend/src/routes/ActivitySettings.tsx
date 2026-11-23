@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useId, useState, type KeyboardEvent } from 'react'
+import { useLocation } from '@tanstack/react-router'
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import {
   ACTIVITY_PRESETS,
   activitiesQuery,
@@ -63,9 +64,16 @@ const taken = (error: unknown) => error instanceof ApiError && error.status === 
 export function ActivitySettings() {
   const activities = useQuery(activitiesQuery)
   const [notice, setNotice] = useState<string | null>(null)
+  const ref = useRef<HTMLFieldSetElement>(null)
+  // Hoy's "Elegir actividades" links here (#573). The router looks for the hash as it
+  // navigates, before Ajustes' settings are in and this card exists, so it is found here.
+  const hash = useLocation({ select: (location) => location.hash })
+  useEffect(() => {
+    if (hash === 'actividades') ref.current?.scrollIntoView?.({ block: 'start' })
+  }, [hash])
 
   return (
-    <fieldset className={cardClass({}, 'settings__card')} id="actividades">
+    <fieldset ref={ref} className={cardClass({}, 'settings__card settings__card--anchor')} id="actividades">
       <SectionTitle as="legend" className="settings__legend">{copy.title}</SectionTitle>
       <p className="settings__hint">{copy.hint}</p>
       {activities.isPending ? (

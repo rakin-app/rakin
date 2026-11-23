@@ -721,3 +721,9 @@
   padding: var(--space-4);
   border-top: 1px solid var(--color-divider);
 }
+
+/* A card a link lands on by its hash (Hoy's "Elegir actividades", #573): not flush
+ * against the top of the screen. */
+.settings__card--anchor {
+  scroll-margin-top: var(--space-4);
+}

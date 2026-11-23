@@ -10,12 +10,14 @@ import { myAccessQuery, myselfQuery, readsLedger } from '../api/me'
 import { memberCountQuery, missingGuardianQuery, plansQuery, type MemberRow } from '../api/people'
 import { proofQueueQuery, type ProofReview } from '../api/review'
 import { requirementsDueQuery, type RequirementsDue } from '../api/requirements'
+import { scheduleQuery } from '../api/schedule'
 import { isClass, todaySessionsQuery, unmarkedSessionsQuery, type ClassSession, type SessionDay } from '../api/sessions'
 import { staffQuery } from '../api/staff'
 import { inactiveQuery, logNudge, type InactiveMember } from '../api/inactive'
 import { remindersQuery, ordinal, type PaymentReminder } from '../api/reminders'
 import { overdueQuery, type OverduePeriod } from '../api/today'
 import { Button, buttonClass } from '../components/Button'
+import { cx } from '../components/classNames'
 import { Banner, Card, cardClass, EmptyState, PlainList, SectionTitle } from '../components/Card'
 import { Select } from '../components/Field'
 import { WhatsAppIcon } from '../components/icons'
@@ -26,10 +28,11 @@ import { Grid, PageContainer } from '../components/Layout'
 import { PageHeader } from '../components/PageHeader'
 import { EmailReminder } from '../components/EmailReminder'
 import { ReminderLink } from '../components/ReminderLink'
-import { dayTime, monthName, shortDay, timeRange, toDate, weekdayDay } from '../format'
+import { dayTime, isoDay, monthName, shortDay, timeRange, toDate, weekdayDay } from '../format'
 import { t } from '../i18n/es'
 import { useGymName, usePageTitle } from '../pageTitle'
 import './Today.css'
+import { setupDoneKey, useSetupMemory, type SetupMemory } from './setupMemory'
 import { useSubmit } from '../api/submit'
 import { Loading } from '../components/Loading'
 
@@ -181,11 +184,11 @@ function ClassRow({ session, timeZone }: { session: ClassSession; timeZone: stri
 }
 
 /** A gym with no students yet: what it can act on, and how to set it up. */
-function NoMembersYet() {
+function NoMembersYet({ setup }: { setup: SetupProps }) {
   return (
     <>
       <JoinRequests />
-      <SetupChecklist doneKey={null} />
+      <SetupChecklist {...setup} />
     </>
   )
 }
@@ -194,6 +197,10 @@ function NoMembersYet() {
  * for a gym with no students yet, its setup instead. */
 function OwnerToday() {
   const members = useQuery(setupMembersQuery)
+  const me = useQuery(myselfQuery())
+  const key = me.data ? setupDoneKey(me.data.person_id) : null
+  const [memory, remember] = useSetupMemory(key)
+  const setup: SetupProps = { memory, remember, canHide: key !== null }
   // Asked for alongside the count, not after it, so a gym with students waits no longer.
   const proofs = useQuery(proofQueueQuery())
   const overdue = useQuery(overdueQuery())
@@ -206,12 +213,14 @@ function OwnerToday() {
 
   // Nothing before the count is in, so a new gym never sees zeros flash; a failed count
   // shows Hoy as usual.
-  if (members.isPending) return null
-  if (members.data === 0) return <NoMembersYet />
+  if (members.isPending || me.isPending) return null
+  // Until a first student the checklist is all of Hoy, whatever this browser remembers as
+  // done, unless the owner hid it.
+  if (members.data === 0 && memory !== 'hidden') return <NoMembersYet setup={setup} />
 
   return (
     <>
-      <Setup />
+      {memory !== 'hidden' && memory !== 'done' && <SetupChecklist {...setup} />}
       <div className="today__counters" aria-label={copy.countersLabel} role="group">
         <Counter
           href="#vencidos"
@@ -336,153 +345,192 @@ const SETUP_STALE_MS = 5 * 60_000
 // The checklist's "Reintentar" still does.
 const setupMembersQuery = { ...memberCountQuery, staleTime: SETUP_STALE_MS, retryOnMount: false }
 
-/** Where this browser remembers that a gym is set up: per host, which is per gym, and per
- * person, for a gym served on the instance's own address. */
-export function setupDoneKey(personId: string): string {
-  return `rakin:setup-done:${window.location.host}:${personId}`
+/** What the checklist knows of this browser's memory of it, and how to change it. */
+type SetupProps = {
+  memory: SetupMemory
+  remember: (memory: 'done' | 'hidden') => void
+  // Who is signed in is known, so "Ocultar" has somewhere to remember it.
+  canHide: boolean
 }
 
-// Storage can be refused (a private window); then the checklist just asks again.
-function remembered(key: string): boolean {
-  try {
-    return window.localStorage.getItem(key) === '1'
-  } catch {
-    return false
-  }
-}
-
-function remember(key: string) {
-  try {
-    window.localStorage.setItem(key, '1')
-  } catch {
-    // Not remembered: the next visit asks the two questions again.
-  }
-}
+type StepId = 'activities' | 'gym' | 'classes' | 'staff' | 'schedule' | 'plans' | 'members'
 
 /**
- * "Configura tu academia": a new gym's steps, each ticked once done and a link to where
- * it is done. Shown until the gym has members and classes, and never again after that in
- * this browser: a gym set up once is remembered, and its Hoy asks nothing for it.
+ * "Configura tu academia": a new gym's steps, in an order that works (#573), each ticked
+ * once done, with what comes next, and a link to where it is done. The next step to do
+ * says "Siguiente" and has its links as buttons; on a phone the done ones fold to a row.
+ *
+ * Shown until the gym has programs, plans and members, then never again in this
+ * browser: a gym set up once is remembered, and its Hoy asks nothing for it. "Ocultar"
+ * hides it sooner, and Ajustes › Cuenta's "Ver primeros pasos" brings it back.
  */
-function Setup() {
-  const me = useQuery(myselfQuery())
-  if (!me.data) return null
-  const key = setupDoneKey(me.data.person_id)
-  return remembered(key) ? null : <SetupChecklist doneKey={key} />
-}
-
-/** `doneKey` null: shown whatever this browser remembers (a gym with no students). */
-function SetupChecklist({ doneKey }: { doneKey: string | null }) {
-  // First the two answers that decide whether it shows at all; the other three only once
-  // it will, so a gym that is set up costs two small requests, once.
+function SetupChecklist({ memory, remember, canHide }: SetupProps) {
+  // First the answers that decide whether it shows at all; the others only once it will,
+  // so a gym that is set up costs three small requests, once.
   const members = useQuery(setupMembersQuery)
   const classTypes = useQuery({ ...classTypesQuery, staleTime: SETUP_STALE_MS })
+  const plans = useQuery({ ...plansQuery, staleTime: SETUP_STALE_MS })
   const hasMembers = (members.data ?? 0) > 0
-  const hasClasses = classTypes.data?.some((c) => c.active) ?? false
-  const setUp = hasMembers && hasClasses
-  const shows = members.data !== undefined && classTypes.data !== undefined && !setUp
+  const activeTypes = classTypes.data?.filter((c) => c.active) ?? []
+  const hasClasses = activeTypes.length > 0
+  const hasPlans = plans.data?.some((p) => p.active) ?? false
+  const setUp = hasMembers && hasClasses && hasPlans
+  const answered = members.data !== undefined && classTypes.data !== undefined && plans.data !== undefined
+  // Asked for again from Ajustes, it shows set up or not.
+  const shows = answered && (!setUp || memory === 'asked')
   const gym = useQuery({ ...gymSettingsQuery(), staleTime: SETUP_STALE_MS, enabled: shows })
-  const plans = useQuery({ ...plansQuery, staleTime: SETUP_STALE_MS, enabled: shows })
   const staff = useQuery({ ...staffQuery, staleTime: SETUP_STALE_MS, enabled: shows })
   const activities = useQuery({ ...activitiesQuery, staleTime: SETUP_STALE_MS, enabled: shows })
+  const schedule = useQuery({ ...scheduleQuery, staleTime: SETUP_STALE_MS, enabled: shows })
 
   useEffect(() => {
-    if (setUp && doneKey) remember(doneKey)
-  }, [setUp, doneKey])
+    if (setUp && memory === null && canHide) remember('done')
+  }, [setUp, memory, canHide, remember])
 
   // A failed answer says so, with a retry, rather than leaving a new gym with no checklist.
-  const failed = [members, classTypes, gym, plans, staff, activities].filter((q) => q.isError)
+  const failed = [members, classTypes, plans, gym, staff, activities, schedule].filter((q) => q.isError)
   if (failed.length > 0) {
     return <Failed message={copy.setup.error} retry={() => failed.forEach((q) => void q.refetch())} />
   }
   // Nothing until every answer is in: drawing it on a partial answer would show a set-up
   // gym unticked steps for a moment.
-  if (!shows || !gym.data || !plans.data || !staff.data || !activities.data) return null
+  if (!shows || !gym.data || !staff.data || !activities.data || !schedule.data) return null
 
   const steps = copy.setup.steps
-  const done = {
+  // A class type is not a class: Clases stays empty until a weekly class exists. Open
+  // access needs none, as Entrada makes the day's class at the first check-in (#348).
+  const today = isoDay(new Date().toISOString())
+  const weekly = schedule.data.some((s) => s.class_type_active && (s.valid_to === null || s.valid_to >= today))
+  const openAccessOnly = hasClasses && activeTypes.every((c) => c.kind === 'open_access')
+  const done: Record<StepId, boolean> = {
     // First what the gym teaches (#245), which decides whether anything speaks of belts.
     activities: activities.data.length > 0,
     gym: gym.data.bank_account !== null,
-    plans: plans.data.some((p) => p.active),
     classes: hasClasses,
-    members: hasMembers,
     // The owner is on the staff from the start.
     staff: staff.data.length > 1,
+    schedule: weekly || openAccessOnly,
+    plans: hasPlans,
+    members: hasMembers,
   }
-  const count = Object.values(done).filter(Boolean).length
+  const order: StepId[] = ['activities', 'gym', 'classes', 'staff', 'schedule', 'plans', 'members']
+  // The team is optional: it counts only once done, "4 de 6 listos" without it.
+  const optional = (id: StepId) => id === 'staff'
+  const counted = order.filter((id) => !optional(id) || done[id])
+  const count = counted.filter((id) => done[id]).length
+  // The next is the first required step to do; the optional one only once it is all that is left.
+  const next = order.find((id) => !done[id] && !optional(id)) ?? order.find((id) => !done[id])
+  const step = (id: StepId) => ({ id, done: done[id], next: next === id })
+  const linkClass = (id: StepId) => (next === id ? buttonClass({ variant: 'primary' }) : 'tap-link today__link')
+
+  const hide = () => {
+    if (window.confirm(copy.setup.hideConfirm)) remember('hidden')
+  }
+
   return (
-    <Card aria-labelledby="setup-title">
+    <Card aria-labelledby="setup-title" className="today__setup">
       <div className="today__section-head">
         <SectionTitle id="setup-title">
           {copy.setup.title}
         </SectionTitle>
-        <span className="today__aside">{copy.setup.progress(count, Object.keys(done).length)}</span>
+        <span className="today__aside">{copy.setup.progress(count, counted.length)}</span>
       </div>
       <PlainList ordered className="today__steps">
-        <SetupStep done={done.activities} title={steps.activities.title} hint={steps.activities.hint}>
-          <Link to="/admin/ajustes/gimnasio" hash="actividades" className="tap-link today__link">
+        <SetupStep {...step('activities')} title={steps.activities.title} hint={steps.activities.hint} doneLine={steps.activities.doneLine}>
+          <Link to="/admin/ajustes/gimnasio" hash="actividades" className={linkClass('activities')}>
             {steps.activities.link}
           </Link>
         </SetupStep>
-        <SetupStep done={done.gym} title={steps.gym.title} hint={steps.gym.hint}>
-          <Link to="/admin/ajustes/gimnasio" className="tap-link today__link">
+        <SetupStep {...step('gym')} title={steps.gym.title} hint={steps.gym.hint} doneLine={steps.gym.doneLine}>
+          <Link to="/admin/ajustes/gimnasio" className={linkClass('gym')}>
             {steps.gym.link}
           </Link>
         </SetupStep>
-        <SetupStep done={done.plans} title={steps.plans.title} hint={steps.plans.hint}>
-          <Link to="/admin/ajustes/planes" className="tap-link today__link">
-            {steps.plans.link}
-          </Link>
-        </SetupStep>
-        <SetupStep done={done.classes} title={steps.classes.title} hint={steps.classes.hint}>
-          <Link to="/admin/ajustes/programas" className="tap-link today__link">
+        <SetupStep {...step('classes')} title={steps.classes.title} hint={steps.classes.hint} doneLine={steps.classes.doneLine}>
+          <Link to="/admin/ajustes/programas" className={linkClass('classes')}>
             {steps.classes.link}
           </Link>
         </SetupStep>
-        <SetupStep done={done.members} title={steps.members.title} hint={steps.members.hint}>
-          <Link to="/admin/alumnos/nuevo" className="tap-link today__link">
-            {steps.members.manual}
-          </Link>
-          <Link to="/admin/alumnos/importar" className="tap-link today__link">
-            {steps.members.import}
-          </Link>
-          <Link to="/admin/ajustes/inscripcion" className="tap-link today__link">
-            {steps.members.joinLink}
-          </Link>
-        </SetupStep>
-        <SetupStep done={done.staff} title={steps.staff.title} hint={steps.staff.hint}>
-          <Link to="/admin/ajustes/equipo" className="tap-link today__link">
+        <SetupStep
+          {...step('staff')}
+          title={steps.staff.title}
+          optional
+          hint={steps.staff.hint}
+          doneLine={steps.staff.doneLine}
+        >
+          <Link to="/admin/ajustes/equipo" className={linkClass('staff')}>
             {steps.staff.link}
           </Link>
         </SetupStep>
+        <SetupStep
+          {...step('schedule')}
+          title={steps.schedule.title}
+          hint={steps.schedule.hint}
+          doneLine={weekly ? steps.schedule.doneLine : steps.schedule.openAccess}
+        >
+          <Link to="/admin/ajustes/horario" className={linkClass('schedule')}>
+            {steps.schedule.link}
+          </Link>
+        </SetupStep>
+        <SetupStep {...step('plans')} title={steps.plans.title} hint={steps.plans.hint} doneLine={steps.plans.doneLine}>
+          <Link to="/admin/ajustes/planes" className={linkClass('plans')}>
+            {steps.plans.link}
+          </Link>
+        </SetupStep>
+        <SetupStep {...step('members')} title={steps.members.title} hint={steps.members.hint} doneLine={steps.members.doneLine}>
+          <Link to="/admin/alumnos/nuevo" className={linkClass('members')}>
+            {steps.members.manual}
+          </Link>
+          <Link to="/admin/alumnos/importar" className={linkClass('members')}>
+            {steps.members.import}
+          </Link>
+          <Link to="/admin/ajustes/inscripcion" className={linkClass('members')}>
+            {steps.members.joinLink}
+          </Link>
+        </SetupStep>
       </PlainList>
+      {canHide && (
+        <div className="today__setup-actions">
+          <Button variant="ghost" onClick={hide}>
+            {copy.setup.hide}
+          </Button>
+        </div>
+      )}
     </Card>
   )
 }
 
 function SetupStep({
   done,
+  next,
+  optional = false,
   title,
   hint,
+  doneLine,
   children,
 }: {
+  id: StepId
   done: boolean
+  next: boolean
+  optional?: boolean
   title: string
   hint: string
+  doneLine: string
   children: ReactNode
 }) {
   return (
-    <li className={`today__step${done ? ' today__step--done' : ''}`}>
+    <li className={cx('today__step', done && 'today__step--done', next && 'today__step--next')}>
       <span className="today__check" aria-hidden="true">
         {done ? '✓' : ''}
       </span>
       <span className="today__row-text">
         <span className="today__name">
           {title}
+          {optional && <span className="today__step-optional"> {copy.setup.optional}</span>}
           <span className="visually-hidden">{copy.setup.state(done)}</span>
+          {next && <span className="today__step-next">{copy.setup.next}</span>}
         </span>
-        <span className="today__detail">{hint}</span>
+        <span className="today__detail">{done ? doneLine : hint}</span>
         <span className="today__step-links">{children}</span>
       </span>
     </li>

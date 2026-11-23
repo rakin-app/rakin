@@ -288,50 +288,74 @@ export const es = {
         progress: (done: number, total: number) => `${done} de ${total} listos`,
         // After a step's title, for a screen reader: the tick says it to the eye.
         state: (done: boolean) => (done ? ' (listo)' : ' (pendiente)'),
+        // Beside the next step to do: the one whose links are buttons (#573).
+        next: 'Siguiente',
+        optional: '(opcional)',
+        hide: 'Ocultar',
+        hideConfirm: '¿Ocultar los primeros pasos? Los encuentras en Ajustes › Cuenta.',
+        // In order (#573): what the gym teaches, the bank account, its programs and class
+        // types, its team (optional), the schedule, its plans, its members. Each a line on
+        // what it is for and, once done, a line on what comes next.
         steps: {
           activities: {
             get title() {
               return `Qué enseña tu ${w.place}`
             },
-            hint: 'Una o varias actividades, y si usan grados.',
+            hint: 'Tus actividades, y si usan grados. Con la primera elegimos las palabras de la app.',
+            get doneLine() {
+              return `Listo. Revisa las palabras en Ajustes › ${w.Place} si no te calzan.`
+            },
             link: 'Elegir actividades',
           },
           gym: {
-            get title() {
-              return `Datos ${w.ofThePlace} y cuenta bancaria`
-            },
+            title: 'Cuenta bancaria',
             get hint() {
-              return `Dónde te transfieren tus ${w.members}.`
+              return `Dónde te transfieren tus ${w.members}. Aparece en su página al pagar.`
             },
-            link: 'Ir a Ajustes',
+            doneLine: 'Listo.',
+            link: 'Agregar cuenta',
+          },
+          classes: {
+            title: 'Programas y tipos de clase',
+            hint: 'Un programa agrupa clases y planes: Adultos, Kids, Competencia. Dentro, los tipos de clase que das.',
+            doneLine: 'Listo. Ahora pon esas clases en el horario.',
+            link: 'Crear tipos de clase',
+          },
+          staff: {
+            title: 'Invita a tu equipo',
+            get hint() {
+              return `Tus ${w.coaches} y admins. Puedes ponerlos en el horario antes de que entren. Si enseñas solo, sáltate este paso.`
+            },
+            doneLine: 'Invitación enviada. Le llega un link por correo.',
+            link: 'Invitar',
+          },
+          schedule: {
+            title: 'Horario',
+            get hint() {
+              return `Las clases de cada semana: día, hora y ${w.coach}. Sin horario, Clases queda vacío.`
+            },
+            doneLine: 'Listo. Tus clases ya están en Clases.',
+            // Ticked with only open-access class types, which need no schedule (#348).
+            openAccess: 'No necesitas horario: las visitas se marcan en Entrada.',
+            link: 'Armar horario',
           },
           plans: {
             title: 'Planes',
             get hint() {
-              return `Qué pagan tus ${w.members} y cada cuánto.`
+              return `Lo que pagan tus ${w.members}. ¿No sabes cuál? Ajustes › Planes explica cada tipo.`
             },
+            doneLine: 'Listo.',
             link: 'Crear planes',
-          },
-          classes: {
-            title: 'Programas y clases',
-            hint: 'Las clases que das, en cada programa.',
-            link: 'Crear clases',
           },
           members: {
             get title() {
               return `Agrega ${w.members}`
             },
-            hint: 'A mano, desde una planilla o con el link de inscripción.',
+            hint: 'A mano, desde una planilla o con el link de inscripción, que llenan ellos.',
+            doneLine: 'Listo.',
             manual: 'Agregar a mano',
             import: 'Importar planilla',
             joinLink: 'Link de inscripción',
-          },
-          staff: {
-            title: 'Invita a tu equipo',
-            get hint() {
-              return `Admins y ${w.coaches}, cada uno con su acceso.`
-            },
-            link: 'Invitar',
           },
         },
       },
@@ -2332,6 +2356,11 @@ export const es = {
         name: 'Nombre',
         email: 'Email',
         none: 'Sin registrar',
+        // Brings back Hoy's "Configura tu academia" after its Ocultar (#573).
+        setup: 'Ver primeros pasos',
+        get setupLine() {
+          return `La lista para configurar tu ${w.place}, en Hoy.`
+        },
       },
       loading: 'Cargando…',
       retry: 'Reintentar',
