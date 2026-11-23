@@ -292,8 +292,12 @@
   cursor: pointer;
 }
 
-.member__entry-button:hover {
-  background: var(--color-surface-sunken);
+/* A real pointer's alone: a tap leaves :hover stuck on a touch screen, so a line opened
+   and closed again would stay shaded as if still selected (#568). */
+@media (hover: hover) and (pointer: fine) {
+  .member__entry-button:hover {
+    background: var(--color-surface-sunken);
+  }
 }
 
 .member__entry-chevron {

@@ -1252,7 +1252,10 @@ export const es = {
       },
       reactivate: 'Reactivar',
       // A mistaken Dar de baja undone in one step (#549): the person and their plan, as before.
+      // On the "Dado de baja" banner (#568), with how it differs from "Reactivar".
       undoLeave: 'Deshacer la baja',
+      undoLeaveHint:
+        'Si la baja fue un error, deshazla: vuelve con el mismo plan y su fecha de pago. Si vuelve más adelante, usa «Reactivar», al final de la ficha: entra con un plan nuevo, o sin plan.',
       returnForm: {
         title: 'Reactivar',
         get intro() {
@@ -1459,7 +1462,8 @@ export const es = {
         only: (title: string, fix: string) => `${title}: ${fix.toLowerCase()}`,
         // What the fix does as it is typed: the period's debt and the plan's balance.
         owed: (month: string, before: string, after: string) => `Debe en ${month}: ${before} → ${after}`,
-        balance: (before: string, after: string) => `Saldo: ${before} → ${after}`,
+        // What they owe in all, every period of the plan (#568): not a bank balance.
+        balance: (before: string, after: string) => `Debe en total: ${before} → ${after}`,
         // Another plan's charge, under "Deuda anterior": its plan, and whether it is owed or voided.
         otherPlans: 'Otros planes',
         voided: (amount: string) => `anulado ${amount}`,
@@ -1616,6 +1620,8 @@ export const es = {
         failed: 'No pudimos cargar los períodos. Inténtalo de nuevo.',
         none: 'No hay otro período por pagar al que moverlo: ni de este plan, ni de otro plan, ni de un hermano.',
         allPending: 'Los períodos por pagar a los que podría moverse tienen un comprobante por validar: revísalo primero.',
+        // Beside it: where that proof is reviewed (#568).
+        review: 'Validar comprobante',
         amount: 'Monto',
         amountHint: (left: string) => `Quedan ${left} de este pago por mover.`,
         // A payment that carried credit (an overpayment) moves only as a whole.

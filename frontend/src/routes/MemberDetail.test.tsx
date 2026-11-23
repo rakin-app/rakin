@@ -720,6 +720,10 @@ describe('Ficha de alumno', () => {
       copy.fix.voidCharge,
       copy.fix.writeOff,
     ])
+    // None chosen to begin with, so none looks like the one to use (#568).
+    expect(chips.map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false', 'false'])
+    expect(within(fixes).queryByRole('form')).not.toBeInTheDocument()
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.changeAmount }))
     expect(within(fixes).getByRole('button', { name: copy.fix.changeAmount })).toHaveAttribute('aria-pressed', 'true')
     expect(within(fixes).getByRole('form', { name: copy.amountForm.title })).toBeInTheDocument()
     await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.voidCharge }))
@@ -734,12 +738,36 @@ describe('Ficha de alumno', () => {
     expect(within(ledger).queryByRole('group')).not.toBeInTheDocument()
   })
 
+  it('opens a payment line on no fix, and draws what undoes money as danger (#568)', async () => {
+    stubApi()
+    renderAt(PATH)
+    const payment = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    const chips = within(payment).getAllByRole('button').filter((b) => b.hasAttribute('aria-pressed'))
+    expect(chips.map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false'])
+    expect(within(payment).queryByRole('form')).not.toBeInTheDocument()
+    await userEvent.click(within(payment).getByRole('button', { name: copy.fix.voidPayment }))
+    expect(within(payment).getByRole('button', { name: copy.voidPaymentForm.submit('$45.000') })).toHaveClass('button--danger')
+
+    const charge = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+    for (const [chip, submit] of [
+      [copy.fix.voidCharge, copy.voidForm.submit('$45.000')],
+      [copy.fix.writeOff, copy.writeOffForm.submit('$45.000')],
+    ] as const) {
+      await userEvent.click(within(charge).getByRole('button', { name: chip }))
+      expect(within(charge).getByRole('button', { name: submit })).toHaveClass('button--danger')
+    }
+    // A fix that moves or restores money keeps the primary.
+    await userEvent.click(within(charge).getByRole('button', { name: copy.fix.changeAmount }))
+    expect(within(charge).getByRole('button', { name: copy.amountForm.submit('$45.000') })).toHaveClass('button--primary')
+  })
+
   it('lowers a charge: the difference in the member\'s favour, with its reason (#279)', async () => {
     const calls = stubApi({
       adjustment: { status: 201, body: { period: { outstanding_clp: 40000, closed: false } } },
     })
     renderAt(PATH)
     const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.changeAmount }))
     const form = within(fixes).getByRole('form', { name: copy.amountForm.title })
 
     expect(within(form).getByText(copy.amountForm.current('$45.000'))).toBeInTheDocument()
@@ -882,14 +910,21 @@ describe('Ficha de alumno', () => {
     const calls = stubApi()
     renderAt(PATH)
     const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.changeAmount }))
 
-    // The amount it already is.
-    await userEvent.click(within(fixes).getByRole('button', { name: copy.amountForm.submit('$45.000') }))
-    expect((await within(fixes).findAllByRole('alert')).map((a) => a.textContent)).toEqual([
-      copy.amountForm.sameAmount,
-      copy.amountForm.reasonNeeded,
-    ])
-    await userEvent.clear(within(fixes).getByLabelText(copy.amountForm.amount))
+    // The amount it already is: nothing to change, so nothing to press (#568).
+    const amount = within(fixes).getByLabelText(copy.amountForm.amount)
+    expect(within(fixes).getByRole('button', { name: copy.amountForm.submit('$45.000') })).toBeDisabled()
+    await userEvent.type(amount, '{Enter}')
+    expect(within(fixes).queryByRole('alert')).not.toBeInTheDocument()
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '40000')
+    expect(within(fixes).getByRole('button', { name: copy.amountForm.submit('$40.000') })).toBeEnabled()
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '45000')
+    expect(within(fixes).getByRole('button', { name: copy.amountForm.submit('$45.000') })).toBeDisabled()
+    await userEvent.clear(amount)
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.amountForm.submit('$0') }))
     expect(within(fixes).getAllByRole('alert').map((a) => a.textContent)).toEqual([
       copy.amountForm.amountNeeded,
       copy.amountForm.reasonNeeded,
@@ -907,6 +942,7 @@ describe('Ficha de alumno', () => {
     })
     renderAt(PATH)
     const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.changeAmount }))
 
     const amount = within(fixes).getByLabelText(copy.amountForm.amount)
     await userEvent.clear(amount)
@@ -923,6 +959,7 @@ describe('Ficha de alumno', () => {
     stubApi({ adjustment: { status: 409, body: { detail: 'the adjustment exceeds what the period owes' } } })
     renderAt(PATH)
     const fixes = await fixLine(/^Cargo octubre/, copy.fix.charge('octubre', null))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.changeAmount }))
 
     const amount = within(fixes).getByLabelText(copy.amountForm.amount)
     await userEvent.clear(amount)
@@ -1565,7 +1602,7 @@ describe('Ficha de alumno', () => {
       name: 'Cambiar monto',
       stub: () => stubApi({ adjustment: { status: 201, body: { period: { outstanding_clp: 40000, closed: false } } } }),
       open: async () => {
-        const form = await chargeForm(null, copy.amountForm.title)
+        const form = await chargeForm(copy.fix.changeAmount, copy.amountForm.title)
         const amount = within(form).getByLabelText(copy.amountForm.amount)
         await userEvent.clear(amount)
         await userEvent.type(amount, '40000')
@@ -1660,6 +1697,7 @@ describe('Ficha de alumno', () => {
       stub: () => moveStub(),
       open: async () => {
         const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+        await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.move }))
         const form = within(fixes).getByRole('form', { name: copy.moveForm.title })
         await within(form).findByLabelText(copy.moveForm.target)
         return typeReason(form, copy.moveForm.reason)
@@ -1688,6 +1726,7 @@ describe('Ficha de alumno', () => {
     const calls = moveStub()
     renderAt(PATH)
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.move }))
     const form = within(fixes).getByRole('form', { name: copy.moveForm.title })
 
     // Its own plan's October first; a period with a proof waiting is listed, not chosen.
@@ -1730,6 +1769,7 @@ describe('Ficha de alumno', () => {
     const calls = moveStub()
     renderAt(PATH)
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.move }))
     const form = within(fixes).getByRole('form', { name: copy.moveForm.title })
     await userEvent.selectOptions(
       await within(form).findByLabelText(copy.moveForm.target),
@@ -1770,6 +1810,7 @@ describe('Ficha de alumno', () => {
     })
     renderAt(PATH)
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.move }))
     const form = within(fixes).getByRole('form', { name: copy.moveForm.title })
     expect(await within(form).findByText(copy.moveForm.wholeOnly('$45.000'))).toBeInTheDocument()
     expect(within(form).getByLabelText(copy.moveForm.amount)).toHaveAttribute('readonly')
@@ -1786,8 +1827,11 @@ describe('Ficha de alumno', () => {
     })
     renderAt(PATH)
     const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.move }))
     expect(await within(fixes).findByText(copy.moveForm.allPending)).toBeInTheDocument()
     expect(within(fixes).queryByRole('form', { name: copy.moveForm.title })).toBeNull()
+    // Not a dead end: it links to where that proof is reviewed (#568).
+    expect(within(fixes).getByRole('link', { name: copy.moveForm.review })).toHaveAttribute('href', '/admin/pagos/comprobantes')
   })
 
   it('reads both halves of a payment moved, naming the other month and plan (#280)', async () => {
@@ -3230,7 +3274,7 @@ describe('the record and the ways out (#157)', () => {
     const form = screen.getByRole('form', { name: copy.leaveForm.title })
     await userEvent.click(within(form).getByRole('button', { name: copy.leaveForm.submit }))
 
-    expect(await screen.findByText(copy.leftBanner('10-11-2026'))).toBeInTheDocument()
+    expect(await screen.findByText(copy.leftBanner('10 nov 2026'))).toBeInTheDocument()
     expect(calls.filter((c) => c.path === '/api/people/felipe/leave')).toEqual([
       { method: 'POST', path: '/api/people/felipe/leave', body: {} },
     ])
@@ -3267,7 +3311,7 @@ describe('the record and the ways out (#157)', () => {
     await userEvent.click(within(chips).getByRole('button', { name: 'Motivo personal' }))
     await userEvent.click(within(form).getByRole('button', { name: copy.leaveForm.submit }))
 
-    const banner = await screen.findByText(copy.leftBanner('10-11-2026'), { exact: false })
+    const banner = await screen.findByText(copy.leftBanner('10 nov 2026'), { exact: false })
     expect(banner).toHaveTextContent(copy.leftBannerReason('Motivo personal'))
     expect(calls.filter((c) => c.path === '/api/people/felipe/leave')).toEqual([
       { method: 'POST', path: '/api/people/felipe/leave', body: { left_reason: 'Motivo personal' } },
@@ -5348,13 +5392,21 @@ describe('Deshacer la baja, in one step (#549)', () => {
     })
   }
 
-  it('offers "Deshacer la baja" beside Reactivar, bringing the person and the plan back together', async () => {
+  const banner = async () => (await screen.findByText(copy.leftBanner('10 nov 2026'))).closest('.banner') as HTMLElement
+
+  it('offers "Deshacer la baja" on the banner, saying how it differs from Reactivar, bringing the person and the plan back together (#568)', async () => {
     const calls = stubLeft()
     renderAt(PATH)
 
+    // At the top, where the baja is announced: something to know, not an error.
+    const top = await banner()
+    expect(top).toHaveClass('banner--warning')
+    expect(within(top).getByText(copy.undoLeaveHint)).toBeInTheDocument()
+    // Reactivar stays at the foot, alone.
     const exit = await actions()
     expect(within(exit).getByRole('button', { name: copy.reactivate })).toBeInTheDocument()
-    await userEvent.click(within(exit).getByRole('button', { name: copy.undoLeave }))
+    expect(within(exit).queryByRole('button', { name: copy.undoLeave })).not.toBeInTheDocument()
+    await userEvent.click(within(top).getByRole('button', { name: copy.undoLeave }))
     const opened = screen.getByRole('form', { name: form.title })
     // It says what comes back: them on the list, and this same plan.
     expect(await within(opened).findByText(form.returns)).toBeInTheDocument()
@@ -5366,7 +5418,7 @@ describe('Deshacer la baja, in one step (#549)', () => {
     expect(calls.filter((c) => c.method === 'POST')).toEqual([])
     await userEvent.click(within(confirm).getByRole('button', { name: form.submit }))
 
-    expect(await within(await actions()).findByText(`${form.doneNothing} ${form.returned}`)).toBeInTheDocument()
+    expect(await screen.findByText(`${form.doneNothing} ${form.returned}`)).toBeInTheDocument()
     expect(calls.filter((c) => c.method === 'POST')).toEqual([
       { method: 'POST', path: '/api/memberships/m-felipe/uncancel', body: { reason: 'fue un error', bill_from: 'last' } },
     ])
@@ -5380,7 +5432,8 @@ describe('Deshacer la baja, in one step (#549)', () => {
     renderAt(PATH)
     const exit = await actions()
     expect(within(exit).getByRole('button', { name: copy.reactivate })).toBeInTheDocument()
-    expect(within(exit).queryByRole('button', { name: copy.undoLeave })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.undoLeave })).not.toBeInTheDocument()
+    expect(within(await banner()).queryByText(copy.undoLeaveHint)).not.toBeInTheDocument()
   })
 
   it('is not offered when their Dar de baja ended no plan it can bring back', async () => {
@@ -5388,7 +5441,8 @@ describe('Deshacer la baja, in one step (#549)', () => {
     renderAt(PATH)
     const exit = await actions()
     expect(within(exit).getByRole('button', { name: copy.reactivate })).toBeInTheDocument()
-    expect(within(exit).queryByRole('button', { name: copy.undoLeave })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: copy.undoLeave })).not.toBeInTheDocument()
+    expect(within(await banner()).queryByText(copy.undoLeaveHint)).not.toBeInTheDocument()
   })
 })
 
