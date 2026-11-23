@@ -73,19 +73,6 @@ DEPENDENTS = f"""
     ORDER BY lower(gp.name), gp.person_id
 """
 
-
-def student_note_sql(entry: str) -> str:
-    """The SQL for the note of `entry`, a `ledger_entry`, a student reads: a rejection's,
-    and a carried credit's ("Pagó $X, quedan $Y a favor"). An admin's note on anything
-    else is theirs. Takes `:rejected` and `:adjustment`."""
-    return (
-        f"CASE WHEN {entry}.status = :rejected"
-        f" OR ({entry}.kind = :adjustment AND {entry}.billing_period_id IS NULL"
-        f" AND {entry}.extra_line_id IS NULL AND {entry}.purpose IS NULL)"
-        f" THEN {entry}.note END"
-    )
-
-
 # The money on the person's memberships and their dependents': payments, and the
 # refunds and adjustments that change what they settle, so "Mis pagos" adds up to what
 # "Próximo pago" asks for (#210). The latest `:limit` payments, and every refund and
@@ -102,7 +89,10 @@ PAYMENTS = f"""
         SELECT e.id, e.kind, w.person_id, gp.name AS person_name, e.amount_clp, e.status,
                bp.period_start, pl.name AS plan_name, {line_title_sql("x", "l")} AS charge_title,
                e.claimed_at, e.validated_at,
-               {student_note_sql("e")} AS note,
+               CASE WHEN e.status = :rejected
+                      OR (e.kind = :adjustment AND e.billing_period_id IS NULL
+                          AND e.extra_line_id IS NULL AND e.purpose IS NULL)
+                    THEN e.note END AS note,
                e.purpose, e.created_at, mv.period_start AS moved_period_start
         FROM ledger_entry e
         LEFT JOIN membership m ON m.id = e.membership_id

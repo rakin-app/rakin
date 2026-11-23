@@ -109,6 +109,7 @@ export type MyHistoryPayment = {
   method: 'cash' | 'transfer' | 'other' | null
   covers_month: string | null
   plan_name: string | null
+  note: string | null
   source: 'manual' | 'import'
   created_at: string
 }
@@ -122,9 +123,10 @@ export type MyVisit = {
   marked_at: string
 }
 
-export type MyGrade = Rank & { id: string }
+// With the coach's note on the promotion.
+export type MyGrade = Rank & { id: string; note: string | null }
 
-export type MyRequirement = { id: string; requirement_name: string; done_on: string; recorded_at: string }
+export type MyRequirement = { id: string; requirement_name: string; done_on: string; recorded_at: string; note: string | null }
 
 export type MyConsentEvent = {
   id: string
@@ -141,8 +143,8 @@ export type MyMessage = {
   channel: 'email' | 'whatsapp'
   template: string
   to_address: string
+  // `failed` without the error, which is the provider's and the server's.
   status: 'sent' | 'failed' | 'suppressed'
-  error: string | null
   payload: Record<string, unknown> | null
   sent_at: string
 }

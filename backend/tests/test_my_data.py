@@ -19,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.my_data import EXPORTED, NOT_EXPORTED
+from app.api.requirements import bound_to
 from app.domain.custom_fields import FieldCipher
 from app.main import create_app
 from tests.auth import FakeAuth, as_gym
@@ -142,10 +143,11 @@ def fill(db: Database, cipher: FieldCipher, gym: uuid.UUID, person: str, mark: s
             )
             await one(
                 "INSERT INTO ledger_entry (gym_id, membership_id, billing_period_id, amount_clp,"
-                " kind, status, method)"
-                " VALUES ($1, $2, $3, 45000, 'payment', 'pending', 'transfer')",
+                " kind, status, method, note)"
+                " VALUES ($1, $2, $3, 45000, 'payment', 'pending', 'transfer', $4)",
                 membership,
                 period,
+                f"pagó en dos partes {mark}",
             )
             await one(
                 "INSERT INTO plan_event (gym_id, membership_id, kind, occurred_on)"
@@ -187,9 +189,11 @@ def fill(db: Database, cipher: FieldCipher, gym: uuid.UUID, person: str, mark: s
             )
             await one(
                 "INSERT INTO history_payment (gym_id, person_id, paid_on, amount_clp, source,"
-                " plan_name, created_by) VALUES ($1, $2, '2019-05-03', 30000, 'manual', $3, $4)",
+                " plan_name, note, created_by)"
+                " VALUES ($1, $2, '2019-05-03', 30000, 'manual', $3, $4, $5)",
                 who,
                 f"Plan antiguo {mark}",
+                f"pagó en efectivo {mark}",
                 owner,
             )
             program = await one(
@@ -214,9 +218,10 @@ def fill(db: Database, cipher: FieldCipher, gym: uuid.UUID, person: str, mark: s
             )
             await one(
                 "INSERT INTO grade_event (gym_id, person_id, rank_key, awarded_on, note)"
-                " VALUES ($1, $2, $3, '2026-06-01', 'nota de la graduación')",
+                " VALUES ($1, $2, $3, '2026-06-01', $4)",
                 who,
                 f"rank-{mark}",
+                f"buena guardia {mark}",
             )
             requirement = await one(
                 "INSERT INTO requirement (gym_id, name) VALUES ($1, $2) RETURNING id",
@@ -224,10 +229,28 @@ def fill(db: Database, cipher: FieldCipher, gym: uuid.UUID, person: str, mark: s
             )
             await one(
                 "INSERT INTO person_requirement (gym_id, person_id, requirement_id, done_on,"
-                " recorded_by) VALUES ($1, $2, $3, $4, $5)",
+                " note, recorded_by) VALUES ($1, $2, $3, $4, $5, $6)",
                 who,
                 requirement,
                 seeded_today(),
+                f"firmado en papel {mark}",
+                owner,
+            )
+            # A sensitive one's note is stored sealed, bound to its record.
+            medical = await one(
+                "INSERT INTO requirement (gym_id, name, sensitive, visible_to)"
+                " VALUES ($1, $2, true, 'owner') RETURNING id",
+                f"Certificado {mark}",
+            )
+            record = uuid.uuid4()
+            await one(
+                "INSERT INTO person_requirement (id, gym_id, person_id, requirement_id, done_on,"
+                " note_secret, recorded_by) VALUES ($2, $1, $3, $4, $5, $6, $7)",
+                record,
+                who,
+                medical,
+                seeded_today(),
+                cipher.seal(gym, who, bound_to(record), f"apto con asma {mark}"),
                 owner,
             )
             await one(
@@ -240,6 +263,14 @@ def fill(db: Database, cipher: FieldCipher, gym: uuid.UUID, person: str, mark: s
                 " status, payload) VALUES ($1, $2, 'email', 'welcome', $3, 'sent', '{}')",
                 who,
                 f"{mark}@example.cl",
+            )
+            await one(
+                "INSERT INTO message_log (gym_id, person_id, channel, template, to_address,"
+                " status, error, payload)"
+                " VALUES ($1, $2, 'email', 'statement', $3, 'failed', $4, '{}')",
+                who,
+                f"{mark}@example.cl",
+                "MailDeliveryError: smtp smtp.internal:587: refused",
             )
             group = await one(
                 "INSERT INTO charge_group (gym_id, name) VALUES ($1, $2) RETURNING id",
@@ -395,9 +426,24 @@ def test_the_export_holds_every_row_of_the_person_and_their_dependent_and_no_one
     assert [t["title_name"] for t in mine["staff"]["titles"]] == ["Coach"]
     assert theirs["staff"] is None
 
-    # The staff's own notes stay theirs.
+    # The notes the staff wrote about each person are theirs too, a sealed one opened.
+    for data_of, mark in [(mine, "ana-x1"), (theirs, "kid-x2")]:
+        assert f"pagó en dos partes {mark}" in [e["note"] for e in data_of["entries"]]
+        assert [h["note"] for h in data_of["history_payments"]] == [f"pagó en efectivo {mark}"]
+        assert [g["note"] for g in data_of["grades"]] == [f"buena guardia {mark}"]
+        assert sorted(r["note"] for r in data_of["requirements"]) == [
+            f"apto con asma {mark}",
+            f"firmado en papel {mark}",
+        ]
+        # A failed message says so, without the provider's or the server's error.
+        assert sorted(m["status"] for m in data_of["messages"]) == ["failed", "sent"]
+        assert all("error" not in m for m in data_of["messages"])
+    # Out: a coach's notes on a class as a whole, a send's error, and who on the staff
+    # recorded a row.
     assert "nota del coach" not in response.text
-    assert "nota de la graduación" not in response.text
+    assert "smtp.internal" not in response.text
+    owner = str(seeded_owner(gym))
+    assert owner not in response.text
 
 
 def test_the_download_is_the_same_document_as_a_file(

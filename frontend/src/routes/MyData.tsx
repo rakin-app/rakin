@@ -20,7 +20,8 @@ const copy = t.me.myData
  * each dependent, as the law's right of access asks: the data, where it came from, how
  * long it is kept, and where the purposes and recipients are (the privacy notice). Each
  * kind of record is a part that opens, with how many it holds; a part with none is not
- * shown. "Descargar mis datos" is the same document as a JSON file. Fixing a datum is
+ * shown. The notes the staff wrote about them are there too; who wrote them is not.
+ * "Descargar mis datos" is the same document as a JSON file. Fixing a datum is
  * not done here: the page says to write to the gym's privacy email.
  */
 export function MyData() {
@@ -242,7 +243,12 @@ function Person({ person, title, zone }: { person: PersonData; title: string; zo
           rows={person.history_payments.map((h) => ({
             key: h.id,
             title: `${t.common.clp(h.amount_clp)} · ${day(h.paid_on)}`,
-            detail: [h.plan_name, h.covers_month && copy.history.covers(monthYear(h.covers_month)), h.method && copy.method[h.method]],
+            detail: [
+              h.plan_name,
+              h.covers_month && copy.history.covers(monthYear(h.covers_month)),
+              h.method && copy.method[h.method],
+              h.note,
+            ],
           }))}
         />
         <Part
@@ -255,11 +261,11 @@ function Person({ person, title, zone }: { person: PersonData; title: string; zo
         />
         <Part
           title={parts.grades}
-          rows={person.grades.map((g) => ({ key: g.id, title: rankLabel(g), detail: [day(g.awarded_on)] }))}
+          rows={person.grades.map((g) => ({ key: g.id, title: rankLabel(g), detail: [day(g.awarded_on), g.note] }))}
         />
         <Part
           title={parts.requirements}
-          rows={person.requirements.map((q) => ({ key: q.id, title: q.requirement_name, detail: [day(q.done_on)] }))}
+          rows={person.requirements.map((q) => ({ key: q.id, title: q.requirement_name, detail: [day(q.done_on), q.note] }))}
         />
         <Part
           title={parts.consents}

@@ -2,8 +2,9 @@
 dependent they are the guardian of. The page and its JSON download are this document.
 
 Amounts are pesos, days are the gym's dates, and moments carry their offset. Ids are
-the gym's own, so one row can be told from another; the staff who recorded a row are
-left out, but for the names a person would know them by (who gave a consent).
+the gym's own, so one row can be told from another. The notes and reasons the staff
+wrote about the person are in; who on the staff wrote or recorded a row is not. Who gave
+a consent, the person or their guardian, is named.
 """
 
 import uuid
@@ -126,7 +127,7 @@ class MyExtraCharge(BaseModel):
 
 class MyEntry(BaseModel):
     """A ledger entry: a charge, a payment, a refund or an adjustment, on a period or a
-    cobro extra. `note` only where the student page shows one (`student_note_sql`)."""
+    cobro extra, with the note the staff wrote on it."""
 
     id: uuid.UUID
     kind: str
@@ -152,6 +153,7 @@ class MyHistoryPayment(BaseModel):
     method: str | None
     covers_month: date | None
     plan_name: str | None
+    note: str | None
     source: str
     created_at: datetime
 
@@ -168,9 +170,10 @@ class MyVisit(BaseModel):
 
 
 class MyGrade(Rank):
-    """A promotion, as the gym's scheme labels it."""
+    """A promotion, as the gym's scheme labels it, with the coach's note on it."""
 
     id: uuid.UUID
+    note: str | None
 
 
 class MyRequirement(BaseModel):
@@ -180,6 +183,8 @@ class MyRequirement(BaseModel):
     requirement_name: str
     done_on: date
     recorded_at: datetime
+    # Opened when the requirement is sensitive and it is stored sealed.
+    note: str | None
 
 
 class MyConsentEvent(BaseModel):
@@ -200,8 +205,8 @@ class MyMessage(BaseModel):
     channel: str
     template: str
     to_address: str
+    # `failed` without the error, which is the provider's and the server's.
     status: str
-    error: str | None
     payload: dict[str, Any] | None
     sent_at: datetime
 

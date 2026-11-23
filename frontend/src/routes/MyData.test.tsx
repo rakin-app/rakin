@@ -94,6 +94,7 @@ const DATA: MyData = {
           method: 'cash',
           covers_month: null,
           plan_name: 'Plan antiguo',
+          note: 'Pagó en efectivo',
           source: 'manual',
           created_at: '2026-03-01T12:00:00Z',
         },
@@ -145,7 +146,9 @@ describe('Mis datos (#371)', () => {
     expect(mine.getByText('Condición médica: Asma')).toBeVisible()
     expect(mine.getByText(copy.field.sensitive)).toBeVisible()
 
-    expect(mine.getByText(copy.count(copy.parts.historyPayments, 1))).toBeInTheDocument()
+    // The notes the staff wrote about them are theirs too.
+    await userEvent.click(mine.getByText(copy.count(copy.parts.historyPayments, 1)))
+    expect(mine.getByText(/Pagó en efectivo/)).toBeVisible()
     expect(mine.getByText(copy.count(copy.parts.dependents, 1))).toBeInTheDocument()
     // A part with nothing in it is not shown.
     expect(mine.queryByText(copy.count(copy.parts.attendance, 0))).not.toBeInTheDocument()

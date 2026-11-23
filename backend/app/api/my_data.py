@@ -17,10 +17,14 @@ ending in it, as `guardian_link`'s), and `NOT_EXPORTED` the few that are not dat
 them; `tests/test_my_data.py` fails when such a table is in neither, so a new one is a
 decision, not a gap.
 
-Left out of the rows: the staff who recorded each one, and the notes the staff write for
-themselves (a coach's class notes, an admin's note on a ledger entry, a requirement's
-note, a promotion's note), as on the rest of the student page. Asking to fix a datum is
-not built here: the page names the gym's privacy email.
+The notes and reasons the staff write about the person are theirs too, so they are in:
+a ledger entry's note, a history payment's, a requirement record's (opened when it is
+sealed), a promotion's, and the reasons a plan was cancelled, voided or discounted, a
+freeze request answered and the person left. Out: who wrote or recorded each row, which
+is the staff member's own data; a coach's notes on a class as a whole, which are about
+no one person; and a failed message's error, which is the provider's and the server's
+(its status says it failed). Asking to fix a datum is not built here: the page names the
+gym's privacy email.
 """
 
 import json
@@ -30,7 +34,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,10 +42,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.custom_fields import field_cipher
 from app.api.extra_lines import line_title_sql
 from app.api.grades import readable_scheme
-from app.api.me import student_note_sql
+from app.api.requirements import bound_to
 from app.domain import custom_fields as cf
 from app.domain.dates import gym_today
-from app.domain.ledger import EntryKind, EntryStatus
 from app.schemas.grades import Rank
 from app.schemas.gym import Privacy
 from app.schemas.my_data import (
@@ -190,10 +193,10 @@ EXTRA_CHARGES = f"""
 """
 
 # A plan's entries by its membership, a cobro extra's by its line.
-ENTRIES = f"""
+ENTRIES = """
     SELECT coalesce(m.person_id, l.person_id) AS person_id, e.id, e.kind, e.status,
            e.amount_clp, e.method, e.billing_period_id, e.extra_line_id, e.purpose,
-           e.proof_object_key IS NOT NULL AS has_proof, {student_note_sql("e")} AS note,
+           e.proof_object_key IS NOT NULL AS has_proof, e.note,
            e.claimed_at, e.validated_at, e.created_at
     FROM ledger_entry e
     LEFT JOIN membership m ON m.id = e.membership_id
@@ -203,13 +206,13 @@ ENTRIES = f"""
 """
 
 HISTORY_PAYMENTS = """
-    SELECT person_id, id, paid_on, amount_clp, method, covers_month, plan_name, source,
-           created_at
+    SELECT person_id, id, paid_on, amount_clp, method, covers_month, plan_name, note,
+           source, created_at
     FROM history_payment WHERE person_id = ANY(:people)
     ORDER BY paid_on, id
 """
 
-# No `notes`: those are the coach's, as on the student page.
+# No `notes`: a coach's notes on the class as a whole, about no one person.
 ATTENDANCE = """
     SELECT m.person_id, s.id AS session_id, s.starts_at, c.name AS class_type_name,
            p.name AS program_name, a.credits_consumed, a.marked_at
@@ -223,13 +226,14 @@ ATTENDANCE = """
 """
 
 GRADES = """
-    SELECT g.person_id, g.id, g.rank_key, g.sub_rank, g.awarded_on
+    SELECT g.person_id, g.id, g.rank_key, g.sub_rank, g.awarded_on, g.note
     FROM grade_event g WHERE g.person_id = ANY(:people)
     ORDER BY g.awarded_on, g.created_at, g.id
 """
 
 REQUIREMENTS = """
-    SELECT pr.person_id, pr.id, r.name AS requirement_name, pr.done_on, pr.recorded_at
+    SELECT pr.person_id, pr.id, r.name AS requirement_name, pr.done_on, pr.recorded_at,
+           pr.note, pr.note_secret
     FROM person_requirement pr JOIN requirement r ON r.id = pr.requirement_id
     WHERE pr.person_id = ANY(:people)
     ORDER BY pr.recorded_at, pr.id
@@ -245,7 +249,7 @@ CONSENTS = """
 """
 
 MESSAGES = """
-    SELECT person_id, id, channel, template, to_address, status, error, payload, sent_at
+    SELECT person_id, id, channel, template, to_address, status, payload, sent_at
     FROM message_log WHERE person_id = ANY(:people)
     ORDER BY sent_at, id
 """
@@ -285,12 +289,7 @@ def _by_person(rows: Iterable[Any]) -> dict[uuid.UUID, list[dict[str, Any]]]:
 async def _read(
     session: AsyncSession, sql: str, people: Sequence[uuid.UUID]
 ) -> dict[uuid.UUID, list[dict[str, Any]]]:
-    params = {
-        "people": list(people),
-        "rejected": EntryStatus.REJECTED.value,
-        "adjustment": EntryKind.ADJUSTMENT.value,
-    }
-    return _by_person(await session.execute(text(sql), params))
+    return _by_person(await session.execute(text(sql), {"people": list(people)}))
 
 
 def _fields(
@@ -379,7 +378,12 @@ async def my_data(session: AsyncSession, tenant: Tenant, cipher: cf.FieldCipher)
         def rows(name: str, person: uuid.UUID = person) -> list[dict[str, Any]]:
             return read[name].get(person, [])
 
-        [record] = rows("records")
+        # `PEOPLE` reads the same table in the same transaction, so this holds; a 404
+        # rather than a 500 should it ever not.
+        records = rows("records")
+        if len(records) != 1:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "person not found")
+        [record] = records
         staff = rows("staff")
         unsubscribed = rows("unsubscribed")
         out.append(
@@ -405,13 +409,27 @@ async def my_data(session: AsyncSession, tenant: Tenant, cipher: cf.FieldCipher)
                 grades=[
                     MyGrade(
                         id=r["id"],
+                        note=r["note"],
                         **Rank.labelled(
                             scheme, r["rank_key"], r["sub_rank"], r["awarded_on"]
                         ).model_dump(),
                     )
                     for r in rows("grades")
                 ],
-                requirements=[MyRequirement.model_validate(r) for r in rows("requirements")],
+                requirements=[
+                    MyRequirement(
+                        id=r["id"],
+                        requirement_name=r["requirement_name"],
+                        done_on=r["done_on"],
+                        recorded_at=r["recorded_at"],
+                        note=r["note"]
+                        if r["note_secret"] is None
+                        else cipher.open(
+                            tenant.gym_id, person, bound_to(r["id"]), r["note_secret"]
+                        ),
+                    )
+                    for r in rows("requirements")
+                ],
                 consents=[MyConsentEvent.model_validate(r) for r in rows("consents")],
                 messages=[MyMessage.model_validate(r) for r in rows("messages")],
                 charge_groups=[r["name"] for r in rows("charge_groups")],
