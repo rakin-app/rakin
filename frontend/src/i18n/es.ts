@@ -5215,7 +5215,10 @@ export const es = {
       },
       terms: 'Términos',
       termsState: { current: 'Vigentes', outdated: 'Desactualizados', pending: 'Pendientes' },
+      // Said only while the terms are pending (#559): a current gym receives data.
       noTerms: 'El titular todavía no acepta los términos. Hasta entonces el gimnasio no recibe datos.',
+      // A gym current by exemption (`app.gyms terms-exempt`), with nothing to accept.
+      exempt: 'Exento: es una instancia que Rakin no aloja, así que no necesita aceptar los términos.',
       // One acceptance (#499): `20 nov 2026, en la app, por Ana · Servicio 2026-11-20 · Encargo 2026-11-20`.
       inApp: (date: string, name: string | null) => `${date}, en la app${name ? `, por ${name}` : ''}`,
       outside: (date: string | null) => (date ? `Fuera de la app, firmada el ${date}` : 'Fuera de la app'),

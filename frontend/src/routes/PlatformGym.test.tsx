@@ -64,6 +64,7 @@ function detail(changes: Partial<PlatformGymDetail> = {}): PlatformGymDetail {
     terms_version: '2026-11-20',
     service_terms_version: '2026-11-20',
     terms_state: 'outdated',
+    terms_exempt: false,
     aliases: [],
     suspended_at: null,
     suspended_reason: null,
@@ -223,6 +224,43 @@ describe('/plataforma/$gymId', () => {
     expect(await screen.findByText(copy.sent('duena@example.cl'))).toBeInTheDocument()
     expect(calls.filter((c) => c.path.endsWith('/owner-link'))).toHaveLength(1)
   })
+
+  // The sentence under "Términos" follows the state its pill shows, whatever made it so (#559).
+  const IN_APP = {
+    accepted_at: '2026-11-20T15:00:00Z',
+    channel: 'in_app',
+    service_version: '2026-11-20',
+    processor_version: '2026-11-20',
+    accepted_by_name: 'Dueña',
+    signed_on: null,
+  } as const
+  const OUTSIDE = { ...IN_APP, channel: 'outside', accepted_by_name: null, signed_on: '2026-11-20' } as const
+  it.each([
+    { state: 'pending', gym: { terms: [], terms_state: 'pending' }, shows: copy.noTerms, record: true },
+    { state: 'accepted in the app', gym: { terms: [IN_APP], terms_state: 'current' }, shows: /en la app, por Dueña/, record: false },
+    { state: 'signed outside the app', gym: { terms: [OUTSIDE], terms_state: 'current' }, shows: /Fuera de la app, firmada el/, record: false },
+    { state: 'exempt', gym: { terms: [], terms_state: 'current', terms_exempt: true }, shows: copy.exempt, record: false },
+    { state: 'outdated', gym: {}, shows: /Fuera de la app, firmada el .* · Encargo 2026-11-19/, record: true },
+  ] satisfies { state: string; gym: Partial<PlatformGymDetail>; shows: string | RegExp; record: boolean }[])(
+    'says how a gym $state stands, and offers what fits',
+    async ({ gym, shows, record }) => {
+      stubApi((call) =>
+        call.path === `/api/platform/gyms/${GYM_ID}` && call.method === 'GET'
+          ? { status: 200, body: detail(gym) }
+          : undefined,
+      )
+      renderAt(`/plataforma/${GYM_ID}`)
+
+      expect(await screen.findByText(shows)).toBeInTheDocument()
+      const state = gym.terms_state ?? 'outdated'
+      expect(screen.getByText(copy.termsState[state])).toBeInTheDocument()
+      // Only a pending gym is said not to have accepted them.
+      expect(screen.queryByText(copy.noTerms) !== null).toBe(state === 'pending')
+      expect(screen.queryByText(copy.exempt) !== null).toBe(gym.terms_exempt === true)
+      expect(screen.getByRole('button', { name: state === 'current' ? copy.resendLink : copy.resendInvite })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: copy.record }) !== null).toBe(record)
+    },
+  )
 
   it('renames only once the new address is typed again, and says what changes', async () => {
     const calls = stubApi((call) =>

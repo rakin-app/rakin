@@ -45,8 +45,9 @@ const REFUSALS = { range: {}, value: copy.refusals as Record<string, string> }
 
 /**
  * A gym's edit screen (#438), opened from the list: its name and its titular's contact,
- * the terms it accepted (#499), with the invitation to accept them sent again and an
- * acceptance made outside the app recorded, and its address. The titular is never
+ * the terms it accepted (#499), or that it is exempt (#559), with the invitation to accept
+ * them sent again and, while they wait, an acceptance made outside the app recorded, and
+ * its address. The titular is never
  * changed here, and their email only before their first sign-in: after it, that is the
  * handover (#321). A new address asks the operator to confirm by typing it, and, if
  * they have not proved who they are in the last 10 minutes, for a code. So do suspending
@@ -223,9 +224,10 @@ function Terms({ gym }: { gym: PlatformGymDetail }) {
   return (
     <Section id={useId()} title={copy.terms} trailing={<StatusPill status={waiting ? 'overdue' : 'done'}>{copy.termsState[gym.terms_state]}</StatusPill>}>
       <div className={cardClass({}, 'platform-gym__card')}>
-        {gym.terms.length === 0 ? (
-          <p className="platform-gym__note">{copy.noTerms}</p>
-        ) : (
+        {/* The sentence follows the state the pill shows (#559), never the list alone. */}
+        {gym.terms_state === 'pending' && <p className="platform-gym__note">{copy.noTerms}</p>}
+        {gym.terms_exempt && <p className="platform-gym__note">{copy.exempt}</p>}
+        {gym.terms.length > 0 && (
           <PlainList className="platform-gym__list">
             {gym.terms.map((signature) => (
               <li key={`${signature.channel}-${signature.accepted_at}`}>
@@ -258,18 +260,21 @@ function Terms({ gym }: { gym: PlatformGymDetail }) {
             )}
           </div>
         )}
-        <form className="platform-gym__inline" onSubmit={submit} noValidate>
-          <Field
-            label={copy.signedOn}
-            hint={copy.recordVersion(gym.service_terms_version, gym.terms_version)}
-            error={error}
-          >
-            {(props) => <Input {...props} type="date" value={signedOn} onChange={(e) => setSignedOn(e.target.value)} />}
-          </Field>
-          <Button type="submit" disabled={record.isPending} busy={record.isPending}>
-            {record.isPending ? copy.recording : copy.record}
-          </Button>
-        </form>
+        {/* A gym already current has nothing to sign: recording is for one that waits. */}
+        {waiting && (
+          <form className="platform-gym__inline" onSubmit={submit} noValidate>
+            <Field
+              label={copy.signedOn}
+              hint={copy.recordVersion(gym.service_terms_version, gym.terms_version)}
+              error={error}
+            >
+              {(props) => <Input {...props} type="date" value={signedOn} onChange={(e) => setSignedOn(e.target.value)} />}
+            </Field>
+            <Button type="submit" disabled={record.isPending} busy={record.isPending}>
+              {record.isPending ? copy.recording : copy.record}
+            </Button>
+          </form>
+        )}
         {record.isError && error === undefined && <Banner tone="error">{copy.recordFailed}</Banner>}
         {record.isSuccess && (
           <Banner tone="done">{record.data.recorded ? copy.recorded : copy.alreadySigned}</Banner>

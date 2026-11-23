@@ -183,6 +183,9 @@ class PlatformGymDetail(BaseModel):
     terms_version: str
     service_terms_version: str
     terms_state: Literal["pending", "outdated", "current"]
+    # Whether the gym is exempt from the terms (0081): an instance the company does
+    # not host, current with no acceptance at all (#559).
+    terms_exempt: bool
     aliases: list[SlugAlias]
     # Since when it is suspended (#439), and why; both None for an active gym.
     suspended_at: datetime | None

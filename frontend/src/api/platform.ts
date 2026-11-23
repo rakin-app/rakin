@@ -152,6 +152,9 @@ export type PlatformGymDetail = {
   terms_version: string
   service_terms_version: string
   terms_state: TermsState
+  // Exempt from the terms (0081): an instance the company does not host, current with
+  // no acceptance at all (#559).
+  terms_exempt: boolean
   // The slugs it had that still redirect to it, and until when.
   aliases: { slug: string; address: string; until: string }[]
   // Since when it is suspended (#439), and why; both `null` for an active gym.
