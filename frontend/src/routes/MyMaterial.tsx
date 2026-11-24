@@ -3,6 +3,7 @@ import { useId, useState } from 'react'
 import { myMaterialQuery, type MyMaterial as Material } from '../api/studyMaterial'
 import { Button } from '../components/Button'
 import { Card, Section } from '../components/Card'
+import { ChevronRightIcon } from '../components/icons'
 import { MaterialContent } from '../components/StudyMaterial'
 import { t } from '../i18n/es'
 import '../components/StudyMaterial.css'
@@ -68,6 +69,10 @@ function MaterialItem({ material }: { material: Material }) {
           {material.shared_by_name && (
             <span className="history__detail">{copy.sharedBy(material.shared_by_name)}</span>
           )}
+        </span>
+        {/* It opens, as a Libro line does (#569): the chevron turns down when it is. */}
+        <span className="my-material__chevron" aria-hidden="true">
+          <ChevronRightIcon />
         </span>
       </button>
       <div id={contentId} className="my-material__content" hidden={!open}>
