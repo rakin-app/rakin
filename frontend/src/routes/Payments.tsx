@@ -135,9 +135,17 @@ function Book() {
   const lines = latest ? bookLines(rows, latest.freezes, latest.timezone, !book.hasNextPage) : []
   const shownMonth = search.month ?? `${isoDay(new Date().toISOString()).slice(0, 7)}-01`
   // No members and nothing ever in the book: an empty state, not four tiles at $0 (#567).
-  // Someone who left still has their history here, so the count alone is not enough.
+  // Someone who left still has their history here, so the count alone is not enough; and
+  // only the unfiltered, unsearched book says the book is empty, so a search or a filter
+  // that finds nothing keeps the search box and the chips.
   const members = useQuery(memberCountQuery)
-  const noMembers = members.data === 0 && latest !== undefined && latest.total === 0 && latest.months.length === 1
+  const noMembers =
+    members.data === 0 &&
+    filter === 'all' &&
+    q.trim() === '' &&
+    latest !== undefined &&
+    latest.total === 0 &&
+    latest.months.length === 1
   const setSearch = (next: PaymentsSearch) => {
     void navigate({ search: (prev) => ({ ...prev, ...next }), replace: true })
   }

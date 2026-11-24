@@ -638,6 +638,24 @@ describe('Pagos', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
+  it('keeps the search box and chips when a search or filter finds nothing on a gym whose members have all left', async () => {
+    // Every entry in the one month the book has, and no one left in Alumnos.
+    const none = { ...BOOK, months: ['2026-11-01'], items: [], total: 0 }
+    stubApi({
+      book: (params) => (params.get('q') || params.get('filter') !== 'all' ? none : { ...BOOK, months: ['2026-11-01'] }),
+      people: () => ({ items: [], total: 0 }),
+    })
+    renderAt('/admin/pagos?q=nadie')
+
+    expect(await screen.findByText(copy.noMatch('nadie'))).toBeInTheDocument()
+    expect(screen.getByRole('searchbox')).toHaveValue('nadie')
+    expect(screen.queryByText(copy.noMembers.text)).not.toBeInTheDocument()
+
+    renderAt('/admin/pagos?filter=overdue')
+    expect(await screen.findByText(copy.empty)).toBeInTheDocument()
+    expect(screen.queryByText(copy.noMembers.text)).not.toBeInTheDocument()
+  })
+
   it('keeps the book of a gym whose members have all left', async () => {
     stubApi({ people: () => ({ items: [], total: 0 }) })
     renderAt('/admin/pagos')

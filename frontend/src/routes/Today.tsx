@@ -73,10 +73,10 @@ const REQUIREMENTS_SHOWN = 5
  * "Falta apoderado", when there is anyone: the minors with no guardian, to whom Rakin
  * sends nothing until the gym adds one (#368), each a tap from their ficha.
  *
- * "Requisitos", when there is anyone (#350), after Por validar and Vencidos (#567): people with a live membership who lack one
- * of the gym's requirements or whose one expired, then those whose one expires within 30
- * days, each a tap from their ficha. A coach's Hoy has it too, with the requirements a
- * coach sees.
+ * "Requisitos", when there is anyone (#350), after Por validar and Vencidos (#567):
+ * people with a live membership who lack one of the gym's requirements or whose one
+ * expired, then those whose one expires within 30 days, each a tap from their ficha. A
+ * coach's Hoy has it too, with the requirements a coach sees.
  *
  * A phone stacks it all; from 1024px the counters run across the top and the lists sit
  * in a grid of two.

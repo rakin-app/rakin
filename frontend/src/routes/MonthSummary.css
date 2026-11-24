@@ -91,8 +91,10 @@
   border-top: 1px solid var(--color-border);
 }
 
-/* The card's first block has nothing above it to set apart: no month heading (#567). */
-.summary__section:first-child {
+/* The card's first block has nothing above it to set apart: no month heading (#567),
+   at most the "Desde el …" line. */
+.summary__section:first-child,
+.summary__since:first-child + .summary__section {
   padding-top: 0;
   border-top: 0;
 }
