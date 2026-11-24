@@ -18,6 +18,7 @@ import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
+from app.domain.billing import GENERATE_AHEAD_DAYS
 from app.domain.dates import add_months
 from app.jobs import billing, lapse
 from app.main import create_app
@@ -106,7 +107,11 @@ def lapsed_member(
 ) -> tuple[str, str, str, dict[str, Any]]:
     """Steps 1 and 2: a plan backdated to the 1st, created today, unpaid until it lapses
     once its grace from today is past. The person, the plan, the membership and its
-    period."""
+    period on the 1st.
+
+    In a month's last week the plan comes billed the next month too, ahead, as every plan
+    does (#586): its period on the 1st is the one picked, and a plan assigned again starts
+    after `billed_through()`."""
     today = seeded_today()
     plan_id = plan(client, gym, "first")
     person = enrolled(
@@ -116,8 +121,11 @@ def lapsed_member(
         membership={"plan_id": plan_id, "started_on": today.replace(day=1).isoformat()},
     )["id"]
     [old] = memberships(client, gym, person)
-    [period] = ledger(client, gym, old["id"])["open_periods"]
-    assert period["due_date"] == today.replace(day=1).isoformat()
+    first = today.replace(day=1).isoformat()
+    [period] = [
+        p for p in ledger(client, gym, old["id"])["open_periods"] if p["period_start"] == first
+    ]
+    assert period["due_date"] == first
 
     # Grace 5 from the day it was created, not from the 1st it fell due on.
     run_lapse(db, today)
@@ -128,22 +136,39 @@ def lapsed_member(
     return person, plan_id, old["id"], period
 
 
+def billed_through() -> date:
+    """The last day `lapsed_member`'s plan billed: its month, and the next one too once
+    that one's 1st is within the days billed ahead of today, in a month's last week."""
+    today = seeded_today()
+    first = today.replace(day=1)
+    months = 2 if add_months(first, 1) <= today + timedelta(days=GENERATE_AHEAD_DAYS) else 1
+    return add_months(first, months) - timedelta(days=1)
+
+
+def on_hoy(period_id: str) -> list[str]:
+    """`lapsed_member`'s period as Hoy lists it: once past due, so not on the 1st, the
+    day it falls due (#586)."""
+    return [period_id] if seeded_today().day > 1 else []
+
+
 def test_a_lapsed_member_assigned_again_is_billed_the_month_once(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     person, plan_id, old, period = lapsed_member(client, db, gym)
     first = seeded_today().replace(day=1)
     next_first = add_months(first, 1)
+    through = billed_through()
+    resumes = through + timedelta(days=1)
 
     # Step 3: the form warns of the debt and of the day the new plan starts.
     assert quote(client, gym, person, plan_id, first) == {
-        "starts_on": next_first.isoformat(),
-        "billed_through": period["period_end"],
+        "starts_on": resumes.isoformat(),
+        "billed_through": through.isoformat(),
         "debt_clp": 45_000,
         "converts": None,
     }
     created = ok(start(client, gym, person, plan_id, first), 201)
-    assert (created["started_on"], created["status"]) == (next_first.isoformat(), "active")
+    assert (created["started_on"], created["status"]) == (resumes.isoformat(), "active")
 
     # The month is billed once, on the lapsed plan, and owed there.
     month = run(
@@ -160,14 +185,14 @@ def test_a_lapsed_member_assigned_again_is_billed_the_month_once(
     assert month[0][0] == 1
     assert ledger(client, gym, old)["owed_clp"] == 45_000
     assert all(
-        p["period_start"] >= next_first.isoformat()
+        p["period_start"] >= resumes.isoformat()
         for p in ledger(client, gym, created["id"])["periods"]
     )
 
-    # Step 4: Hoy lists the one period the member owes.
-    assert [p["billing_period_id"] for p in overdue(client, gym) if p["person_id"] == person] == [
-        period["id"]
-    ]
+    # Step 4: Hoy lists the one period the member owes, once it is past due.
+    assert [
+        p["billing_period_id"] for p in overdue(client, gym) if p["person_id"] == person
+    ] == on_hoy(period["id"])
     # Step 6: the ficha and Alumnos show the active plan as current.
     assert memberships(client, gym, person)[0]["id"] == created["id"]
     assert shown(client, gym, person) == created["id"]
@@ -213,19 +238,19 @@ def test_a_moved_start_bills_on_the_day_it_moved_to(
     client: TestClient, db: Database, gym: uuid.UUID
 ) -> None:
     """A plan anchored on the signup day, asked from the 15th of the month the lapsed plan
-    billed, starts on the 1st after it, and bills on the 1st, not the 15th."""
+    billed, starts on the 1st after what it billed, and bills on the 1st, not the 15th."""
     person, _, _, period = lapsed_member(client, db, gym)
-    next_first = add_months(seeded_today().replace(day=1), 1)
+    resumes = billed_through() + timedelta(days=1)
     signup = plan(client, gym, "signup")
     asked = seeded_today().replace(day=15)
-    assert quote(client, gym, person, signup, asked)["starts_on"] == next_first.isoformat()
+    assert quote(client, gym, person, signup, asked)["starts_on"] == resumes.isoformat()
     created = ok(start(client, gym, person, signup, asked), 201)
-    assert (created["started_on"], created["anchor_day"]) == (next_first.isoformat(), 1)
-    run_billing(db, next_first)
+    assert (created["started_on"], created["anchor_day"]) == (resumes.isoformat(), 1)
+    run_billing(db, resumes)
     [first] = ledger(client, gym, created["id"])["periods"]
-    month_after = add_months(next_first, 1) - timedelta(days=1)
+    month_after = add_months(resumes, 1) - timedelta(days=1)
     assert (first["period_start"], first["period_end"]) == (
-        next_first.isoformat(),
+        resumes.isoformat(),
         month_after.isoformat(),
     )
     assert period["period_end"] < first["period_start"]
@@ -297,4 +322,6 @@ def test_the_lapsed_plans_charge_is_voided_and_put_back_with_a_recargo(
     }
     ok(client.post("/api/ledger/adjustments", json=surcharge, headers=as_gym(gym)), 201)
     assert ledger(client, gym, old)["owed_clp"] == 45_000
-    assert period["id"] in {p["billing_period_id"] for p in overdue(client, gym)}
+    assert on_hoy(period["id"]) == [
+        p["billing_period_id"] for p in overdue(client, gym) if p["person_id"] == person
+    ]

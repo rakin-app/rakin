@@ -1,29 +1,58 @@
 """A monthly plan's anchor changed, applied to the members already on it (#547): quoted
 first, then moved from each one's next period not billed, the transition prorated, and
 each move in the ficha's "Correcciones".
+
+The members start in a November billing has not reached yet (`NOV_1`), not in this
+year's: the API bills a member as they start through today plus the job's lead time, so
+a start on Nov 12, 2026 came billed December too from Nov 24 on, and every month since
+after it (#586). Each one's first period is billed here instead, by the job on the day
+they start. November, then a 31-day December and January, keeps the prorations' days
+as they are written.
 """
 
 import uuid
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
+from app.domain.billing import GENERATE_AHEAD_DAYS
+from app.domain.dates import add_months
 from app.jobs import billing
 from app.main import create_app
 from app.seed.build import seed_id
 from app.seed.data import COACH
 from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
-from tests.pg import Database, in_gym, migrate, run, seed_gym, throwaway_database
+from tests.pg import (
+    Database,
+    in_gym,
+    migrate,
+    run,
+    seed_gym,
+    seeded_today,
+    throwaway_database,
+)
 from tests.test_memberships import plan, start
 
 pytestmark = pytest.mark.postgres
 
-NOV_12 = date(2026, 11, 12)
+
+def first_november_ahead() -> date:
+    """The 1st of the first November past the days billed ahead of today."""
+    horizon = seeded_today() + timedelta(days=GENERATE_AHEAD_DAYS)
+    november = date(horizon.year, 11, 1)
+    return november if november > horizon else date(horizon.year + 1, 11, 1)
+
+
+NOV_1 = first_november_ahead()
+NOV_12 = NOV_1.replace(day=12)
+NOV_30 = NOV_1.replace(day=30)
+DEC_1 = add_months(NOV_1, 1)
+JAN_1 = add_months(NOV_1, 2)
 COACH_ID = seed_id("person", COACH)
 
 
@@ -55,9 +84,13 @@ def generate(db: Database, day: date) -> None:
     assert run(db.owner_url, go)
 
 
-def member(client: TestClient, gym: uuid.UUID, plan_id: str, started_on: date) -> dict[str, Any]:
+def member(
+    client: TestClient, db: Database, gym: uuid.UUID, plan_id: str, started_on: date
+) -> dict[str, Any]:
+    """A member on `plan_id` from `started_on`, their first period billed."""
     response = start(client, gym, plan_id, started_on=started_on.isoformat())
     assert response.status_code == 201, response.text
+    generate(db, started_on)
     return dict(response.json())
 
 
@@ -100,8 +133,8 @@ def test_a_mid_month_member_moves_from_the_1st_to_the_day_they_started(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     plan_id = plan(client, sur, "first")
-    ana = member(client, sur, plan_id, NOV_12)
-    assert periods(db, sur, ana["id"]) == [(NOV_12, date(2026, 11, 30), 45_000)]
+    ana = member(client, db, sur, plan_id, NOV_12)
+    assert periods(db, sur, ana["id"]) == [(NOV_12, NOV_30, 45_000)]
 
     quoted = quote(client, sur, plan_id, "signup")
 
@@ -114,11 +147,11 @@ def test_a_mid_month_member_moves_from_the_1st_to_the_day_they_started(
             "membership_id": ana["id"],
             "from_day": 1,
             "to_day": 12,
-            "starts_on": "2026-12-01",
-            "ends_on": "2026-12-11",
+            "starts_on": DEC_1.isoformat(),
+            "ends_on": DEC_1.replace(day=11).isoformat(),
             # 11 of the 31 days Dec 1 would have billed.
             "amount_due_clp": 45_000 * 11 // 31,
-            "next_starts_on": "2026-12-12",
+            "next_starts_on": DEC_1.replace(day=12).isoformat(),
             "next_amount_clp": 45_000,
         }
     ]
@@ -128,19 +161,19 @@ def test_a_mid_month_member_moves_from_the_1st_to_the_day_they_started(
     assert response.json()["anchor"] == "signup"
     assert membership(client, sur, ana["id"])["next_anchor_day"] == 12
     # The period billed already stays as it was.
-    assert periods(db, sur, ana["id"]) == [(NOV_12, date(2026, 11, 30), 45_000)]
+    assert periods(db, sur, ana["id"]) == [(NOV_12, NOV_30, 45_000)]
 
-    generate(db, date(2026, 12, 5))
+    generate(db, DEC_1.replace(day=5))
 
     assert periods(db, sur, ana["id"]) == [
-        (NOV_12, date(2026, 11, 30), 45_000),
-        (date(2026, 12, 1), date(2026, 12, 11), 15_967),
-        (date(2026, 12, 12), date(2027, 1, 11), 45_000),
+        (NOV_12, NOV_30, 45_000),
+        (DEC_1, DEC_1.replace(day=11), 15_967),
+        (DEC_1.replace(day=12), JAN_1.replace(day=11), 45_000),
     ]
     moved = membership(client, sur, ana["id"])
     assert (moved["anchor_day"], moved["next_anchor_day"]) == (12, None)
     (row,) = anchor_corrections(client, sur, ana["person_id"])
-    assert row["anchor"] == {"before": 1, "after": 12, "starts_on": "2026-12-01"}
+    assert row["anchor"] == {"before": 1, "after": 12, "starts_on": DEC_1.isoformat()}
     assert row["actor_name"] is not None
 
 
@@ -148,48 +181,52 @@ def test_a_member_moves_from_the_day_they_started_to_the_1st(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     plan_id = plan(client, sur, "signup")
-    ana = member(client, sur, plan_id, NOV_12)
-    assert periods(db, sur, ana["id"]) == [(NOV_12, date(2026, 12, 11), 45_000)]
+    ana = member(client, db, sur, plan_id, NOV_12)
+    assert periods(db, sur, ana["id"]) == [(NOV_12, DEC_1.replace(day=11), 45_000)]
 
     (quoted,) = quote(client, sur, plan_id, "first").json()["moves"]
     assert (quoted["starts_on"], quoted["ends_on"], quoted["amount_due_clp"]) == (
-        "2026-12-12",
-        "2026-12-31",
+        DEC_1.replace(day=12).isoformat(),
+        DEC_1.replace(day=31).isoformat(),
         45_000 * 20 // 31,
     )
 
     assert edit(client, sur, plan_id, anchor="first", move_members=True).status_code == 200
-    generate(db, date(2026, 12, 26))
+    generate(db, DEC_1.replace(day=26))
 
     assert periods(db, sur, ana["id"])[1:] == [
-        (date(2026, 12, 12), date(2026, 12, 31), 29_032),
-        (date(2027, 1, 1), date(2027, 1, 31), 45_000),
+        (DEC_1.replace(day=12), DEC_1.replace(day=31), 29_032),
+        (JAN_1, JAN_1.replace(day=31), 45_000),
     ]
     assert membership(client, sur, ana["id"])["anchor_day"] == 1
     (row,) = anchor_corrections(client, sur, ana["person_id"])
-    assert row["anchor"] == {"before": 12, "after": 1, "starts_on": "2026-12-12"}
+    assert row["anchor"] == {
+        "before": 12,
+        "after": 1,
+        "starts_on": DEC_1.replace(day=12).isoformat(),
+    }
 
 
 def test_declining_keeps_the_members_on_their_day_and_new_ones_take_the_new_one(
-    client: TestClient, sur: uuid.UUID
+    client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     plan_id = plan(client, sur, "first")
-    ana = member(client, sur, plan_id, NOV_12)
+    ana = member(client, db, sur, plan_id, NOV_12)
 
     assert edit(client, sur, plan_id, anchor="signup").status_code == 200
 
     assert membership(client, sur, ana["id"])["next_anchor_day"] is None
     assert anchor_corrections(client, sur, ana["person_id"]) == []
-    newcomer = member(client, sur, plan_id, NOV_12)
+    newcomer = member(client, db, sur, plan_id, NOV_12)
     assert newcomer["anchor_day"] == 12
 
 
 def test_only_members_who_would_move_are_quoted_and_moved(
-    client: TestClient, sur: uuid.UUID
+    client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     plan_id = plan(client, sur, "first")
-    on_the_1st = member(client, sur, plan_id, date(2026, 11, 1))
-    leaving = member(client, sur, plan_id, NOV_12)
+    on_the_1st = member(client, db, sur, plan_id, NOV_1)
+    leaving = member(client, db, sur, plan_id, NOV_12)
     other = plan(client, sur, "signup")
     response = client.post(
         f"/api/memberships/{leaving['id']}/plan-change",
@@ -207,17 +244,17 @@ def test_only_members_who_would_move_are_quoted_and_moved(
 
 
 def test_changing_back_before_the_move_is_billed_withdraws_it(
-    client: TestClient, sur: uuid.UUID
+    client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     plan_id = plan(client, sur, "first")
-    ana = member(client, sur, plan_id, NOV_12)
+    ana = member(client, db, sur, plan_id, NOV_12)
     assert edit(client, sur, plan_id, anchor="signup", move_members=True).status_code == 200
 
     assert edit(client, sur, plan_id, anchor="first", move_members=True).status_code == 200
 
     assert membership(client, sur, ana["id"])["next_anchor_day"] is None
     withdrawn, moved = anchor_corrections(client, sur, ana["person_id"])
-    assert withdrawn["anchor"] == {"before": 12, "after": 1, "starts_on": "2026-12-01"}
+    assert withdrawn["anchor"] == {"before": 12, "after": 1, "starts_on": DEC_1.isoformat()}
     assert moved["anchor"]["after"] == 12
 
 
@@ -225,7 +262,7 @@ def test_changing_back_unticked_withdraws_the_move_pending(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     plan_id = plan(client, sur, "first")
-    ana = member(client, sur, plan_id, NOV_12)
+    ana = member(client, db, sur, plan_id, NOV_12)
     assert edit(client, sur, plan_id, anchor="signup", move_members=True).status_code == 200
 
     quoted = quote(client, sur, plan_id, "first").json()
@@ -237,19 +274,19 @@ def test_changing_back_unticked_withdraws_the_move_pending(
 
     assert membership(client, sur, ana["id"])["next_anchor_day"] is None
     withdrawn, _ = anchor_corrections(client, sur, ana["person_id"])
-    assert withdrawn["anchor"] == {"before": 12, "after": 1, "starts_on": "2026-12-01"}
-    generate(db, date(2026, 12, 5))
-    assert periods(db, sur, ana["id"])[1] == (date(2026, 12, 1), date(2026, 12, 31), 45_000)
+    assert withdrawn["anchor"] == {"before": 12, "after": 1, "starts_on": DEC_1.isoformat()}
+    generate(db, DEC_1.replace(day=5))
+    assert periods(db, sur, ana["id"])[1] == (DEC_1, DEC_1.replace(day=31), 45_000)
 
 
 def test_moving_with_the_anchor_the_plan_has_moves_those_still_on_another_day(
-    client: TestClient, sur: uuid.UUID
+    client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     plan_id = plan(client, sur, "first")
-    straggler = member(client, sur, plan_id, NOV_12)
+    straggler = member(client, db, sur, plan_id, NOV_12)
     # The plan changed earlier, its members left on the 1st.
     assert edit(client, sur, plan_id, anchor="signup").status_code == 200
-    newcomer = member(client, sur, plan_id, NOV_12)
+    newcomer = member(client, db, sur, plan_id, NOV_12)
 
     (quoted,) = quote(client, sur, plan_id, "signup").json()["moves"]
     assert quoted["membership_id"] == straggler["id"]
@@ -258,7 +295,7 @@ def test_moving_with_the_anchor_the_plan_has_moves_those_still_on_another_day(
     assert membership(client, sur, straggler["id"])["next_anchor_day"] == 12
     assert membership(client, sur, newcomer["id"])["next_anchor_day"] is None
     (row,) = anchor_corrections(client, sur, straggler["person_id"])
-    assert row["anchor"] == {"before": 1, "after": 12, "starts_on": "2026-12-01"}
+    assert row["anchor"] == {"before": 1, "after": 12, "starts_on": DEC_1.isoformat()}
 
 
 def test_refusals(client: TestClient, sur: uuid.UUID) -> None:
@@ -289,7 +326,7 @@ def test_a_frozen_member_on_the_plan_is_moved_too(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     plan_id = plan(client, sur, "first")
-    ana = member(client, sur, plan_id, NOV_12)
+    ana = member(client, db, sur, plan_id, NOV_12)
     run(
         db.owner_url,
         in_gym(

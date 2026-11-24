@@ -479,50 +479,72 @@ def charges(client: TestClient, gym: uuid.UUID, membership: str) -> list[tuple[A
     )
 
 
+def recent_start() -> date:
+    """A day a plan on the signup day starts on billed one period, whatever today is:
+    today, or the 28th from the 29th on, so each period after it starts on that day.
+    Not `NOV_15`: from Dec 8 on, the API bills a start on it a period ahead (#586)."""
+    today = seeded_today()
+    return today.replace(day=min(today.day, 28))
+
+
+def started_recently(client: TestClient, gym: uuid.UUID, **body: Any) -> dict[str, Any]:
+    """A plan on the signup day started on `recent_start()`."""
+    on = recent_start().isoformat()
+    response = start(client, gym, plan(client, gym, "signup"), started_on=on, **body)
+    assert response.status_code == 201, response.text
+    return dict(response.json())
+
+
 def test_a_plan_starts_with_a_discount_and_its_reason(client: TestClient, sur: uuid.UUID) -> None:
-    membership = started(client, sur, "signup", discount={"pct": 50, "reason": "Hermanos"})
+    membership = started_recently(client, sur, discount={"pct": 50, "reason": "Hermanos"})
 
     assert (membership["discount_pct"], membership["discount_reason"]) == (50, "Hermanos")
-    assert charges(client, sur, membership["id"]) == [(NOV_15, 22_500, 50, "Hermanos")]
+    assert charges(client, sur, membership["id"]) == [
+        (recent_start().isoformat(), 22_500, 50, "Hermanos")
+    ]
 
 
 def test_a_discount_bills_from_the_next_period_and_keeps_the_billed_ones(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
-    membership = started(client, sur, "signup")
+    first = recent_start()
+    second, third = add_months(first, 1), add_months(first, 2)
+    membership = started_recently(client, sur)
     url = f"/api/memberships/{membership['id']}/discount"
 
     quoted = client.get(url, params={"pct": 10}, headers=as_gym(sur))
     assert quoted.status_code == 200, quoted.text
     assert quoted.json() == {
-        "starts_on": "2026-12-15",
-        "period_end": "2027-01-14",
+        "starts_on": second.isoformat(),
+        "period_end": (third - timedelta(days=1)).isoformat(),
         "amount_due_clp": 40_500,
     }
     saved = discount(client, sur, membership["id"], {"pct": 10, "reason": " Beca "})
     assert saved.status_code == 200, saved.text
     assert (saved.json()["discount_pct"], saved.json()["discount_reason"]) == (10, "Beca")
 
-    generate(db, date(2026, 12, 10))
+    generate(db, second - timedelta(days=5))
     assert charges(client, sur, membership["id"]) == [
-        (NOV_15, 45_000, 0, None),
-        ("2026-12-15", 40_500, 10, "Beca"),
+        (first.isoformat(), 45_000, 0, None),
+        (second.isoformat(), 40_500, 10, "Beca"),
     ]
 
     # Taken off, the next period is billed in full; December keeps its discount.
     cleared = discount(client, sur, membership["id"], None)
     assert (cleared.json()["discount_pct"], cleared.json()["discount_reason"]) == (0, None)
-    generate(db, date(2027, 1, 10))
+    generate(db, third - timedelta(days=5))
     assert charges(client, sur, membership["id"])[1:] == [
-        ("2026-12-15", 40_500, 10, "Beca"),
-        ("2027-01-15", 45_000, 0, None),
+        (second.isoformat(), 40_500, 10, "Beca"),
+        (third.isoformat(), 45_000, 0, None),
     ]
 
 
 def test_each_discount_set_changed_or_taken_off_is_a_correction(
     client: TestClient, sur: uuid.UUID
 ) -> None:
-    membership = started(client, sur, "signup", discount={"pct": 50, "reason": "Hermanos"})
+    first = recent_start()
+    second = add_months(first, 1).isoformat()
+    membership = started_recently(client, sur, discount={"pct": 50, "reason": "Hermanos"})
     member = membership["id"]
     discount(client, sur, member, {"pct": 30, "reason": "Beca"})
     # The discount it has: nothing changes, nothing is recorded.
@@ -542,7 +564,7 @@ def test_each_discount_set_changed_or_taken_off_is_a_correction(
             {
                 "before": {"pct": 30, "reason": "Beca"},
                 "after": {"pct": 0, "reason": None},
-                "starts_on": "2026-12-15",
+                "starts_on": second,
             },
         ),
         (
@@ -550,7 +572,7 @@ def test_each_discount_set_changed_or_taken_off_is_a_correction(
             {
                 "before": {"pct": 50, "reason": "Hermanos"},
                 "after": {"pct": 30, "reason": "Beca"},
-                "starts_on": "2026-12-15",
+                "starts_on": second,
             },
         ),
         (
@@ -558,7 +580,7 @@ def test_each_discount_set_changed_or_taken_off_is_a_correction(
             {
                 "before": {"pct": 0, "reason": None},
                 "after": {"pct": 50, "reason": "Hermanos"},
-                "starts_on": NOV_15,
+                "starts_on": first.isoformat(),
             },
         ),
     ]
@@ -601,10 +623,10 @@ def test_a_cancelled_plan_takes_no_discount(client: TestClient, sur: uuid.UUID) 
 
 
 def test_a_frozen_plan_is_quoted_after_what_it_billed(client: TestClient, sur: uuid.UUID) -> None:
-    membership = started(client, sur, "signup")
+    membership = started_recently(client, sur)
     frozen = client.post(
         f"/api/memberships/{membership['id']}/freeze",
-        json={"to_date": "2026-12-01", "reason": "lesión"},
+        json={"to_date": (seeded_today() + timedelta(days=14)).isoformat(), "reason": "lesión"},
         headers=as_gym(sur),
     )
     assert frozen.status_code == 200, frozen.text

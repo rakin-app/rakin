@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +21,7 @@ from sqlalchemy.engine import make_url
 
 from alembic import command
 from app.db_bootstrap import bootstrap, to_dsn
-from app.domain.dates import gym_today
+from app.domain.dates import add_months, gym_today
 from app.legal import PROCESSOR_TERMS_VERSION, SERVICE_TERMS_VERSION
 from app.settings import Settings
 from tests.conftest import make_settings
@@ -195,6 +195,12 @@ async def accept_terms(conn: asyncpg.Connection, gym_id: uuid.UUID) -> None:
     )
 
 
+# The month of the period `seed_gym` bills its owner: a fixed date, which
+# `test_reporting_views` reads its history against, so in the current month's book
+# only in November 2026 (#586).
+SEEDED_PERIOD_START = date(2026, 11, 1)
+
+
 def seed_gym(db: Database, slug: str, *, accepted: bool = True) -> uuid.UUID:
     """A gym with one person, its owner (`seeded_owner`: a staff and a `gym_person`
     row), and a plan, membership, period and ledger entry; with the current terms
@@ -239,9 +245,11 @@ def seed_gym(db: Database, slug: str, *, accepted: bool = True) -> uuid.UUID:
             period_id = await conn.fetchval(
                 "INSERT INTO billing_period"
                 " (gym_id, membership_id, period_start, period_end, amount_due_clp, due_date)"
-                " VALUES ($1, $2, '2026-11-01', '2026-11-30', 45000, '2026-11-01') RETURNING id",
+                " VALUES ($1, $2, $3, $4, 45000, $3) RETURNING id",
                 gym_id,
                 membership_id,
+                SEEDED_PERIOD_START,
+                add_months(SEEDED_PERIOD_START, 1) - timedelta(days=1),
             )
             await conn.execute(
                 "INSERT INTO ledger_entry"
