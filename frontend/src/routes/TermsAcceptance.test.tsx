@@ -1,5 +1,5 @@
 import { createMemoryHistory } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
@@ -214,6 +214,26 @@ describe('the terms gate (#499)', () => {
     await userEvent.type(legalName, 'Norte SpA')
     await userEvent.click(accept)
     expect(screen.getByLabelText(copy.rut)).toHaveFocus()
+    expect(calls.some((c) => c.path === '/api/terms/accept')).toBe(false)
+  })
+
+  it('refused for a box left unticked, focuses it and says why (#569)', async () => {
+    const calls = stubApi((call) => {
+      if (call.path === '/api/me/role') return { status: 200, body: me('owner', 'pending') }
+      if (call.path === '/api/terms') return { status: 200, body: PAGE }
+      return undefined
+    })
+    renderAt('/admin')
+
+    await screen.findByLabelText(copy.legalName)
+    await fillForm()
+    const [service, processor] = screen.getAllByRole('checkbox')
+    await userEvent.click(service!)
+    // The button waits for both boxes; a submit some other way is refused all the same.
+    fireEvent.submit(screen.getByRole('form', { name: copy.title }))
+    expect(processor).toHaveFocus()
+    expect(processor).toHaveAccessibleDescription(copy.needsBoth)
+    expect(service).not.toHaveAttribute('aria-invalid', 'true')
     expect(calls.some((c) => c.path === '/api/terms/accept')).toBe(false)
   })
 

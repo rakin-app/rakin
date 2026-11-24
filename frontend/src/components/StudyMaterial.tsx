@@ -382,7 +382,7 @@ function MaterialForm({
         </fieldset>
       )}
       {dated && (
-        <Field label={words.from}>
+        <Field label={words.from} error={tried && from === '' ? words.fromMissing : undefined}>
           {(props) => <Input {...props} type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />}
         </Field>
       )}

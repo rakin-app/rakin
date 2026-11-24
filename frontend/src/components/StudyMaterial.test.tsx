@@ -147,6 +147,23 @@ describe('StudyMaterial', () => {
     expect(first).toHaveAccessibleDescription(copy.form.audienceMissing)
   })
 
+  it('refuses a cleared Desde with an error, and focuses it (#569)', async () => {
+    const sent = stub([])
+    show({ kind: 'slot', id: 'slot-1' }, true)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: copy.add }))
+    await user.type(screen.getByLabelText(copy.form.title), 'Repaso')
+    await user.click(screen.getByRole('radio', { name: new RegExp(copy.audience.program) }))
+    const from = screen.getByLabelText(copy.form.from)
+    await user.clear(from)
+    await user.click(screen.getByRole('button', { name: copy.form.submit }))
+
+    expect(from).toHaveFocus()
+    expect(from).toHaveAccessibleDescription(copy.form.fromMissing)
+    expect(sent).toEqual([])
+  })
+
   it('refuses a link that is not https before sending', async () => {
     const sent = stub([])
     show({ kind: 'session', id: 's-1' }, true)

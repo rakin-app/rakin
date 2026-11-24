@@ -17,7 +17,7 @@ import { validationErrors } from '../api/validation'
 import { Button } from '../components/Button'
 import { Banner, cardClass, CheckRow, Section, SectionTitle } from '../components/Card'
 import { Disclosure } from '../components/Disclosure'
-import { Field, Input } from '../components/Field'
+import { Field, FieldError, Input } from '../components/Field'
 import { PageContainer } from '../components/Layout'
 import { useFocusFirstInvalid, useRefusal } from '../components/focusInvalid'
 import { Loading } from '../components/Loading'
@@ -165,6 +165,7 @@ function AcceptanceForm({ page }: { page: TermsPage }) {
   const formRef = useRef<HTMLFormElement>(null)
   const changesId = useId()
   const textsId = useId()
+  const boxesError = useId()
   const blanks = blanksOf(drafts)
 
   const accept = useSubmit({
@@ -190,6 +191,7 @@ function AcceptanceForm({ page }: { page: TermsPage }) {
   const problems = problemsOf(drafts)
   const valid = Object.keys(problems).length === 0
   const both = checked.service && checked.processor
+  const firstUnticked = !checked.service ? 'service' : !checked.processor ? 'processor' : null
   const apiErrors = validationErrors(accept.error)
   const errorOf = (key: string) => (tried ? problems[key] : undefined) ?? apiRefusal(apiErrors, key)
 
@@ -325,11 +327,15 @@ function AcceptanceForm({ page }: { page: TermsPage }) {
             <input
               type="checkbox"
               checked={checked[key]}
+              // Refused for a box left unticked, the first of them is focused and says so (#569).
+              aria-invalid={tried && key === firstUnticked}
+              aria-describedby={tried && key === firstUnticked ? boxesError : undefined}
               onChange={(e) => setChecked({ ...checked, [key]: e.target.checked })}
             />
             <span>{declaration(key)}</span>
           </CheckRow>
         ))}
+        {tried && !both && <FieldError id={boxesError}>{copy.needsBoth}</FieldError>}
       </div>
 
       {accept.isError && !changed && (
@@ -337,7 +343,7 @@ function AcceptanceForm({ page }: { page: TermsPage }) {
       )}
       {tried && !valid && <Banner tone="error">{copy.invalid}</Banner>}
       <div className="terms__actions">
-        {!both && <p className="terms__note">{copy.needsBoth}</p>}
+        {!both && !tried && <p className="terms__note">{copy.needsBoth}</p>}
         <Button type="submit" variant="primary" disabled={!both || accept.isPending} busy={accept.isPending}>
           {accept.isPending ? copy.accepting : copy.accept}
         </Button>

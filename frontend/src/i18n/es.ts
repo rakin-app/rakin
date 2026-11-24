@@ -3398,6 +3398,7 @@ export const es = {
         thisClass: 'Solo esta clase',
         everyClass: 'Esta y las siguientes de este horario',
         from: 'Desde',
+        fromMissing: 'Elige desde cuándo.',
         submit: 'Compartir',
         save: 'Guardar',
         working: 'Guardando…',
