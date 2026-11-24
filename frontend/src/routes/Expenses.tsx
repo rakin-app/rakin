@@ -33,8 +33,9 @@ import { Banner, Card, cardClass, PlainList } from '../components/Card'
 import { cx } from '../components/classNames'
 import { Field, FieldError, Input, Select, Textarea } from '../components/Field'
 import { useRefusal } from '../components/focusInvalid'
-import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon } from '../components/icons'
+import { ChevronDownIcon, ChevronUpIcon } from '../components/icons'
 import { PageContainer } from '../components/Layout'
+import { PeriodStepper } from '../components/PeriodStepper'
 import { Loading } from '../components/Loading'
 import { MoneyTabs } from '../components/MoneyTabs'
 import { PageHeader, PageTitle } from '../components/PageHeader'
@@ -126,29 +127,15 @@ function ExpensesPage({ writes }: { writes: boolean }) {
       </header>
 
       <div className="expenses__toolbar">
-        <div className="expenses__month" role="group" aria-label={copy.month}>
-          <Button
-            icon
-            variant="ghost"
-            aria-label={copy.previous}
-            disabled={!shownMonth}
-            onClick={() => shownMonth && go({ month: shiftMonth(shownMonth, -1) })}
-          >
-            <ChevronLeftIcon />
-          </Button>
-          <span className="expenses__month-label" aria-live="polite">
-            {shownMonth ? t.common.month(shownMonth, '') : ''}
-          </span>
-          <Button
-            icon
-            variant="ghost"
-            aria-label={copy.next}
-            disabled={!shown || shown.month >= shown.current_month}
-            onClick={() => shown && go({ month: shiftMonth(shown.month, 1) })}
-          >
-            <ChevronRightIcon />
-          </Button>
-        </div>
+        <PeriodStepper
+          label={copy.month}
+          previous={copy.previous}
+          next={copy.next}
+          onPrevious={shownMonth ? () => go({ month: shiftMonth(shownMonth, -1) }) : undefined}
+          onNext={shown && shown.month < shown.current_month ? () => go({ month: shiftMonth(shown.month, 1) }) : undefined}
+        >
+          {shownMonth ? t.common.month(shownMonth, '') : ''}
+        </PeriodStepper>
         <label htmlFor={categoryId} className="expenses__filter">
           <span className="visually-hidden">{copy.category}</span>
           <Select

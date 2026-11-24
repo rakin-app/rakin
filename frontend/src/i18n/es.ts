@@ -317,7 +317,7 @@ export const es = {
           },
           classes: {
             title: 'Programas y tipos de clase',
-            hint: 'Un programa agrupa clases y planes: Adultos, Kids, Competencia. Dentro, los tipos de clase que das.',
+            hint: 'Un programa agrupa clases y planes: Adultos, Niños, Competencia. Dentro, los tipos de clase que das.',
             doneLine: 'Listo. Ahora pon esas clases en el horario.',
             link: 'Crear tipos de clase',
           },
@@ -434,7 +434,8 @@ export const es = {
     rankFilter: {
       orHigher: (label: string) => `${label} o superior`,
       ranks: 'Adultos',
-      kids: 'Kids',
+      // The kids' ladder, in Spanish as Ajustes › Grados names it (#567).
+      kids: 'Infantil',
     },
     students: {
       get title() {
@@ -2035,7 +2036,7 @@ export const es = {
             'Un grado que obtuvo antes de Rakin, con la fecha en que lo recibió. Si es el más reciente, es su grado actual. No se le avisa.',
           rank: 'Rango',
           ranks: 'Adultos',
-          kids: 'Kids',
+          kids: 'Infantil',
           subRank: 'Grado',
           date: 'Fecha',
           note: 'Nota (opcional)',
@@ -2257,15 +2258,15 @@ export const es = {
         open: 'Ver clase',
         // The week before or after, the day moving with it (#426).
         label: 'Cambiar de semana',
-        previous: '← Semana anterior',
-        next: 'Semana siguiente →',
+        previous: 'Semana anterior',
+        next: 'Semana siguiente',
       },
       days: {
         // A public holiday's name after the day's (#426): `lun 8 dic · La Inmaculada Concepción`.
         holiday: (day: string, name: string) => `${day} · ${name}`,
         label: 'Cambiar de día',
-        previous: '← Anterior',
-        next: 'Siguiente →',
+        previous: 'Día anterior',
+        next: 'Día siguiente',
         today: 'Hoy',
         empty: 'No hay clases este día.',
         jump: 'Ir a fecha',
@@ -2281,8 +2282,8 @@ export const es = {
       month: {
         title: (iso: string) => `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`,
         label: 'Cambiar de mes',
-        previous: '← Mes anterior',
-        next: 'Mes siguiente →',
+        previous: 'Mes anterior',
+        next: 'Mes siguiente',
         error: 'No pudimos cargar este mes.',
         // Monday first.
         weekdays: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
@@ -2672,7 +2673,7 @@ export const es = {
       programs: {
         title: 'Programas y clases',
         error: 'No pudimos cargar los programas y las clases.',
-        empty: 'Todavía no hay programas. Crea uno, como Adultos o Kids, y luego sus clases.',
+        empty: 'Todavía no hay programas. Crea uno, como Adultos o Niños, y luego sus clases.',
         add: 'Nuevo programa',
         rename: 'Renombrar',
         edit: 'Editar',
@@ -3742,7 +3743,9 @@ export const es = {
       loading: 'Cargando los pagos…',
       error: 'No pudimos cargar los pagos.',
       retry: 'Reintentar',
-      month: 'Período',
+      month: 'Mes',
+      previous: 'Mes anterior',
+      next: 'Mes siguiente',
       // The month's ledger for the accountant (#40).
       exportCsv: 'Exportar CSV',
       exportXlsx: 'Exportar Excel',
@@ -3770,7 +3773,19 @@ export const es = {
           (frozen ? ` · ${frozen === 1 ? '1 congelada' : `${frozen} congeladas`}` : ''),
       },
       filtersLabel: 'Filtrar movimientos',
-      filters: { all: 'Todos', pending: 'Por validar', overdue: 'Vencidos', kids: 'Kids' },
+      // `kids` is the entries of people a guardian pays for, offered only when the gym has
+      // any (#567).
+      filters: { all: 'Todos', pending: 'Por validar', overdue: 'Vencidos', kids: 'Con apoderado' },
+      // A gym with no members yet (#567): one line and where to add them, no $0 tiles.
+      noMembers: {
+        get text() {
+          return `Todavía no hay ${w.members}. Cuando ${w.memberIs('los', 'las')} agregues, aquí verás sus cobros y pagos.`
+        },
+        get manual() {
+          return `Agregar ${w.member}`
+        },
+        import: 'Importar planilla',
+      },
       columns: {
         date: 'Fecha',
         get student() {
@@ -3874,9 +3889,11 @@ export const es = {
       plans: 'Cuotas y planes',
       extra: 'Cobros extra',
       incomeNote: 'Lo cobrado, como lo muestra Pagos: neto de devoluciones.',
-      // Under Resultado (#318): both are already in Entradas and Salidas, nothing nets.
+      // Under Resultado (#318): both are already in Entradas and Salidas, nothing nets. In
+      // the cobro's own words, "Gastos asociados" and "Recaudado" (#534), so a reader can
+      // check it against Cobros extra (#567).
       recovered: (paid: string, collected: string) =>
-        `De esto, gastos recuperados con cobros extra: ${paid} pagado, ${collected} recaudado.`,
+        `Este mes, los gastos asociados a cobros extra suman ${paid}, y esos cobros recaudaron ${collected}.`,
       noExpenses: 'No hay gastos registrados en este mes.',
       noExpensesYear: 'No hay gastos registrados en este año.',
       onlyExpenses: 'Ves solo las salidas: las entradas son de quien tiene «Ver ingresos».',
@@ -4071,6 +4088,9 @@ export const es = {
       error: 'No pudimos cargar el resumen.',
       retry: 'Reintentar',
       month: 'Mes',
+      previous: 'Mes anterior',
+      next: 'Mes siguiente',
+      cardLabel: (month: string) => `Resumen de ${month}`,
       // A gym's first month on Rakin is a partial one.
       since: (day: string) => `Desde el ${day}`,
       // A whole percentage, as Chile writes it.
@@ -4106,6 +4126,8 @@ export const es = {
       whatsappOff: 'Con WhatsApp activado en Ajustes › Gimnasio, el equipo puede escribir desde Hoy a quienes dejaron de venir, y aquí verás cuántos volvieron.',
       // The smaller counts, as a label and a figure.
       counts: 'Otros números del mes',
+      // The same counts with no headline figure or split before them: nothing "other" (#567).
+      countsAlone: 'Números del mes',
       get ownPayments() {
         return `Pagos que informaron ${w.memberIs('los mismos', 'las mismas')} ${w.members}, con su comprobante`
       },

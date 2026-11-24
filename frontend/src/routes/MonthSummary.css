@@ -1,6 +1,6 @@
 @import '../styles/media.css';
 
-/* Pagos › Resumen del mes (#505): the month picker, one card with the headline figures as
+/* Pagos › Resumen del mes (#505): the month stepper (#567), one card with the headline figures as
    tiles, the late payments' split as bars and the smaller counts as a list, and how they
    are counted. Tiles stack on a phone and sit side by side from the desktop width. */
 
@@ -8,30 +8,6 @@
   display: grid;
   gap: var(--space-4);
   padding-block: var(--space-5) var(--space-6);
-}
-
-.summary__month {
-  display: flex;
-  align-items: center;
-  justify-self: start;
-  gap: var(--space-2);
-  min-height: var(--control-height);
-  padding: 0 var(--space-3);
-  background: var(--color-surface);
-  box-shadow: inset 0 0 0 1px var(--color-border-input);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-}
-
-.summary__month-select {
-  background: transparent;
-  border: 0;
-  color: var(--color-text);
-  font: inherit;
-  /* 16px, or iOS Safari zooms in on focus. */
-  font-size: var(--text-input);
-  font-weight: var(--font-weight-semibold);
-  align-self: stretch;
 }
 
 .summary__note {
@@ -50,16 +26,8 @@
   gap: var(--space-4);
 }
 
-.summary__heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0;
-  font-size: var(--text-lg);
-}
-
 .summary__since {
+  margin: 0;
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
@@ -121,6 +89,14 @@
   gap: var(--space-3);
   padding-top: var(--space-4);
   border-top: 1px solid var(--color-border);
+}
+
+/* The card's first block has nothing above it to set apart: no month heading (#567),
+   at most the "Desde el …" line. */
+.summary__section:first-child,
+.summary__since:first-child + .summary__section {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .summary__subheading {

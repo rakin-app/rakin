@@ -1306,6 +1306,10 @@ BOOK_FILTERS = {
     BookFilter.KIDS: f"{IN_MONTH} AND gl.dependent_person_id IS NOT NULL",
 }
 
+# Whether the gym has a dependent at all, so the book offers "Con apoderado" (#567).
+# Row-level security keeps it to the gym's own links.
+BOOK_HAS_DEPENDENTS = text("SELECT EXISTS (SELECT 1 FROM guardian_link)")
+
 # The month's freeze lines as the book lists them, with whose membership it is, as
 # `BOOK_ROWS` has it.
 BOOK_FREEZES = f"""
@@ -1462,6 +1466,7 @@ async def ledger_book(
         items=[book_entry(row) for row in rows],
         total=total or 0,
         freezes=freezes,
+        has_dependents=bool(await session.scalar(BOOK_HAS_DEPENDENTS)),
     )
 
 

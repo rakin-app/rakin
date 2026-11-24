@@ -3,7 +3,7 @@
 /* Gastos fijos (#315). The card above the month's list: a row per gasto fijo not yet
    recorded, its name and day over its amount, and its two buttons; on a phone the
    buttons drop under the name, from the desktop width they sit at the row's end. Below
-   the list, the templates themselves, as the categories are laid out. */
+   the list, the templates themselves, each one line with its buttons at its end. */
 
 .recurring-due {
   display: grid;
@@ -91,13 +91,19 @@
   max-width: 64rem;
 }
 
+/* A template is one row at every width (#567): its name and detail, and Editar and
+   Pausar trailing on the same line, never dropped under it. An edit's form takes the
+   whole row. */
 .recurring__row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
   padding-block: var(--space-2);
+}
+
+.recurring__row > .recurring__form {
+  grid-column: 1 / -1;
 }
 
 .recurring__row + .recurring__row {
@@ -135,6 +141,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+
+.recurring__actions {
+  flex-wrap: nowrap;
+  gap: 0;
 }
 
 .recurring__form {

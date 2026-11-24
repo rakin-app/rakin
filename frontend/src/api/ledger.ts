@@ -99,6 +99,8 @@ export type LedgerBook = {
   total: number
   // The month's freeze lines, newest first; none on `pending` and `overdue`. Not paged.
   freezes: BookFreeze[]
+  // Whether anyone in the gym has a guardian: "Con apoderado" shows only then (#567).
+  has_dependents: boolean
 }
 
 export const BOOK_PAGE_SIZE = 50

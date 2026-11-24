@@ -14,11 +14,12 @@ import { Button } from '../components/Button'
 import { Card, PlainList } from '../components/Card'
 import { SegmentedControl } from '../components/Chip'
 import { cx } from '../components/classNames'
-import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon } from '../components/icons'
+import { ChevronDownIcon, ChevronUpIcon } from '../components/icons'
 import { PageContainer } from '../components/Layout'
 import { MoneyTabs } from '../components/MoneyTabs'
 import { Loading } from '../components/Loading'
 import { PageHeader, PageTitle } from '../components/PageHeader'
+import { PeriodStepper } from '../components/PeriodStepper'
 import { shiftMonth } from '../format'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
@@ -105,40 +106,6 @@ function signed(amount: number): string {
   return amount === 0 ? clp(0) : t.common.signedClp(amount)
 }
 
-function Stepper({
-  label,
-  shown,
-  previous,
-  next,
-  canPrevious,
-  canNext,
-  onPrevious,
-  onNext,
-}: {
-  label: string
-  shown: string
-  previous: string
-  next: string
-  canPrevious: boolean
-  canNext: boolean
-  onPrevious: () => void
-  onNext: () => void
-}) {
-  return (
-    <div className="finances__stepper" role="group" aria-label={label}>
-      <Button icon variant="ghost" aria-label={previous} disabled={!canPrevious} onClick={onPrevious}>
-        <ChevronLeftIcon />
-      </Button>
-      <span className="finances__stepper-label" aria-live="polite">
-        {shown}
-      </span>
-      <Button icon variant="ghost" aria-label={next} disabled={!canNext} onClick={onNext}>
-        <ChevronRightIcon />
-      </Button>
-    </div>
-  )
-}
-
 /** Entradas, Salidas and Resultado side by side; Salidas alone without income. */
 function Tiles({ income, expenses, result }: { income: number | null; expenses: number; result: number | null }) {
   return (
@@ -178,16 +145,15 @@ function MonthView({ month, onMonth }: { month: string | undefined; onMonth: (mo
   const shownMonth = shown?.month ?? month
   return (
     <>
-      <Stepper
+      <PeriodStepper
         label={copy.month}
-        shown={shownMonth ? t.common.month(shownMonth, '') : ''}
         previous={copy.previous}
         next={copy.next}
-        canPrevious={Boolean(shownMonth)}
-        canNext={Boolean(shown && shown.month < shown.current_month)}
-        onPrevious={() => shownMonth && onMonth(shiftMonth(shownMonth, -1))}
-        onNext={() => shown && onMonth(shiftMonth(shown.month, 1))}
-      />
+        onPrevious={shownMonth ? () => onMonth(shiftMonth(shownMonth, -1)) : undefined}
+        onNext={shown && shown.month < shown.current_month ? () => onMonth(shiftMonth(shown.month, 1)) : undefined}
+      >
+        {shownMonth ? t.common.month(shownMonth, '') : ''}
+      </PeriodStepper>
       {query.isPending ? (
         <Loading className="finances__note">{copy.loading}</Loading>
       ) : query.isError && !shown ? (
@@ -252,16 +218,17 @@ function YearView({ year, onYear }: { year: number | undefined; onYear: (year: n
   const currentYear = shown ? Number(shown.current_month.slice(0, 4)) : undefined
   return (
     <>
-      <Stepper
+      <PeriodStepper
         label={copy.yearNav}
-        shown={shownYear ? String(shownYear) : ''}
         previous={copy.previousYear}
         next={copy.nextYear}
-        canPrevious={Boolean(shownYear)}
-        canNext={Boolean(shown && currentYear !== undefined && shown.year < currentYear)}
-        onPrevious={() => shownYear && onYear(shownYear - 1)}
-        onNext={() => shown && onYear(shown.year + 1)}
-      />
+        onPrevious={shownYear ? () => onYear(shownYear - 1) : undefined}
+        onNext={
+          shown && currentYear !== undefined && shown.year < currentYear ? () => onYear(shown.year + 1) : undefined
+        }
+      >
+        {shownYear ? String(shownYear) : ''}
+      </PeriodStepper>
       {query.isPending ? (
         <Loading className="finances__note">{copy.loading}</Loading>
       ) : query.isError && !shown ? (

@@ -189,7 +189,7 @@ exports[`a gym's words > reads exactly as before with none set: nav, Hoy and Alu
         },
         "classes": {
           "doneLine": "Listo. Ahora pon esas clases en el horario.",
-          "hint": "Un programa agrupa clases y planes: Adultos, Kids, Competencia. Dentro, los tipos de clase que das.",
+          "hint": "Un programa agrupa clases y planes: Adultos, Niños, Competencia. Dentro, los tipos de clase que das.",
           "link": "Crear tipos de clase",
           "title": "Programas y tipos de clase",
         },

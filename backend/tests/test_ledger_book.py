@@ -221,6 +221,29 @@ def test_a_dependents_entries_carry_their_guardian_and_are_the_kids_filter(
 
 
 @pg
+def test_the_book_says_whether_the_gym_has_dependents(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    # "Con apoderado" is offered only to a gym with someone a guardian pays for (#567).
+    add_person(client, sur, "Ana")
+    assert read(client, sur)["has_dependents"] is False
+
+    new_kid(client, sur, add_person(client, sur, "Marta"), "Juan")
+
+    assert read(client, sur)["has_dependents"] is True
+
+
+@pg
+def test_another_gyms_dependents_do_not_count(
+    client: TestClient, db: Database, sur: uuid.UUID
+) -> None:
+    norte = seed_gym(db, unique_slug("academia-norte"))
+    new_kid(client, norte, add_person(client, norte, "Bea"), "Tomás")
+
+    assert read(client, sur)["has_dependents"] is False
+
+
+@pg
 def test_search_keeps_the_members_it_finds_by_name_phone_or_rut(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:

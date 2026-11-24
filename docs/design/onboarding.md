@@ -142,7 +142,7 @@ line on what comes next:
 |---|---|---|---|---|
 | 1 | Qué enseña tu {lugar} | ≥ 1 activity | Tus actividades, y si usan grados. Con la primera elegimos las palabras de la app. | Listo. Revisa las palabras en Ajustes › {Lugar} si no te calzan. |
 | 2 | Cuenta bancaria | bank account saved | Dónde te transfieren tus {alumnos}. Aparece en su página al pagar. | Listo. |
-| 3 | Programas y tipos de clase | ≥ 1 active class type | Un programa agrupa clases y planes: Adultos, Kids, Competencia. Dentro, los tipos de clase que das. | Listo. Ahora pon esas clases en el horario. |
+| 3 | Programas y tipos de clase | ≥ 1 active class type | Un programa agrupa clases y planes: Adultos, Niños, Competencia. Dentro, los tipos de clase que das. | Listo. Ahora pon esas clases en el horario. |
 | 4 | Invita a tu equipo *(opcional)* | ≥ 1 other person on the team | Tus {profes} y admins. Puedes ponerlos en el horario antes de que entren. Si enseñas solo, sáltate este paso. | Invitación enviada. Le llega un link por correo. |
 | 5 | Horario | ≥ 1 weekly class, **or** an active "Acceso libre" type | Las clases de cada semana: día, hora y {profe}. Sin horario, Clases queda vacío. | Listo. Tus clases ya están en Clases. |
 | 6 | Planes | ≥ 1 active plan | Lo que pagan tus {alumnos}. ¿No sabes cuál? Ajustes › Planes explica cada tipo. | Listo. |
@@ -224,7 +224,7 @@ Section line (`descriptions.programs`): "Cómo se agrupan tus clases y tus plane
 
 Head line, above the programs:
 
-> Un **programa** agrupa clases y planes (Adultos, Kids, Competencia). Dentro de cada
+> Un **programa** agrupa clases y planes (Adultos, Niños, Competencia). Dentro de cada
 > uno van sus **tipos de clase**: lo que das, sin día ni hora. El día y la hora van en
 > **Horario**.
 

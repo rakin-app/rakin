@@ -14,11 +14,11 @@ import {
 } from '../api/ledger'
 import { myAccessQuery, readsExpenses, readsLedger } from '../api/me'
 import { membershipLedgerQuery, membershipsQuery, shownMemberships } from '../api/member'
-import { membersQuery, type MemberRow } from '../api/people'
+import { memberCountQuery, membersQuery, type MemberRow } from '../api/people'
 import { pendingCountQuery } from '../api/proofs'
 import { remindersQuery, type PaymentReminder } from '../api/reminders'
 import { Button, buttonClass } from '../components/Button'
-import { Banner, Card, listRowClass, ListRowContent, PlainList } from '../components/Card'
+import { Banner, Card, EmptyState, listRowClass, ListRowContent, PlainList } from '../components/Card'
 import { Chip, ChipGroup } from '../components/Chip'
 import { EmailReminder } from '../components/EmailReminder'
 import { SearchInput } from '../components/Field'
@@ -26,6 +26,7 @@ import { PageContainer } from '../components/Layout'
 import { MoneyTabs } from '../components/MoneyTabs'
 import { MoreMenu, moreItemClass } from '../components/MoreMenu'
 import { PageHeader, PageTitle } from '../components/PageHeader'
+import { monthNeighbours, PeriodStepper } from '../components/PeriodStepper'
 import { StatusPill, type Status } from '../components/StatusPill'
 import { dayTime, isoDay, monthName, monthYear, shortDay, toDate } from '../format'
 import { t } from '../i18n/es'
@@ -114,7 +115,6 @@ function Book() {
   const book = useInfiniteQuery({ ...ledgerBookQuery(search.month, filter, q), placeholderData: keepPreviousData })
   // The nav badge's count, so the link stands even while the book cannot load.
   const pending = useQuery(pendingCountQuery()).data ?? 0
-  const monthId = useId()
   const searchId = useId()
   const [recording, setRecording] = useState(false)
   const [done, setDone] = useState<string | null>(null)
@@ -134,6 +134,18 @@ function Book() {
   const rows = uniqueEntries(book.data?.pages.flatMap((page) => page.items) ?? [])
   const lines = latest ? bookLines(rows, latest.freezes, latest.timezone, !book.hasNextPage) : []
   const shownMonth = search.month ?? `${isoDay(new Date().toISOString()).slice(0, 7)}-01`
+  // No members and nothing ever in the book: an empty state, not four tiles at $0 (#567).
+  // Someone who left still has their history here, so the count alone is not enough; and
+  // only the unfiltered, unsearched book says the book is empty, so a search or a filter
+  // that finds nothing keeps the search box and the chips.
+  const members = useQuery(memberCountQuery)
+  const noMembers =
+    members.data === 0 &&
+    filter === 'all' &&
+    q.trim() === '' &&
+    latest !== undefined &&
+    latest.total === 0 &&
+    latest.months.length === 1
   const setSearch = (next: PaymentsSearch) => {
     void navigate({ search: (prev) => ({ ...prev, ...next }), replace: true })
   }
@@ -166,25 +178,14 @@ function Book() {
       </header>
 
       {/* The month and "Más" under the header. Drawn from the first render, so nothing
-          moves once the book answers: until then the picker holds the month asked for,
+          moves once the book answers: until then the stepper holds the month asked for,
           and waits. */}
       <div className="payments__toolbar">
-        <label htmlFor={monthId} className="payments__month">
-          {copy.month}
-          <select
-            id={monthId}
-            className="payments__month-select"
-            value={latest?.month ?? shownMonth}
-            disabled={!latest}
-            onChange={(event) => setSearch({ month: event.target.value })}
-          >
-            {(latest?.months ?? [shownMonth]).map((month) => (
-              <option key={month} value={month}>
-                {t.common.month(month, '')}
-              </option>
-            ))}
-          </select>
-        </label>
+        <MonthStepper
+          months={latest?.months ?? []}
+          month={latest?.month ?? shownMonth}
+          onMonth={(month) => setSearch({ month })}
+        />
         <MoreMenu label={copy.moreActions}>
           <Link to="/admin/pagos/cobros" className={moreItemClass()}>
             {copy.extra}
@@ -230,7 +231,10 @@ function Book() {
           <Button onClick={() => void book.refetch()}>{copy.retry}</Button>
         </div>
       ) : (
-        latest && (
+        latest &&
+        (noMembers ? (
+          <NoMembersYet />
+        ) : (
           <>
             <Kpis kpis={latest.kpis} />
             <Link
@@ -256,7 +260,7 @@ function Book() {
               </div>
               <div className="payments__filters">
                 <ChipGroup label={copy.filtersLabel}>
-                  {BOOK_FILTERS.map((value) => (
+                  {BOOK_FILTERS.filter((value) => value !== 'kids' || latest.has_dependents || filter === 'kids').map((value) => (
                     <Chip
                       key={value}
                       pressed={filter === value}
@@ -329,9 +333,57 @@ function Book() {
               </div>
             </Card>
           </>
-        )
+        ))
       )}
     </PageContainer>
+  )
+}
+
+/** The months the book lists, newest first, a step at a time: ‹ Noviembre 2026 ›. */
+function MonthStepper({
+  months,
+  month,
+  onMonth,
+}: {
+  months: readonly string[]
+  month: string
+  onMonth: (month: string) => void
+}) {
+  const { older, newer } = monthNeighbours(months, month)
+  return (
+    <PeriodStepper
+      label={copy.month}
+      previous={copy.previous}
+      next={copy.next}
+      onPrevious={older ? () => onMonth(older) : undefined}
+      onNext={newer ? () => onMonth(newer) : undefined}
+    >
+      {t.common.month(month, '')}
+    </PeriodStepper>
+  )
+}
+
+/** A gym with no members and nothing in its book (#567): where to add them, as Hoy has
+ *  it (#358), and no tiles at $0. */
+function NoMembersYet() {
+  const words = copy.noMembers
+  return (
+    <Card>
+      <EmptyState
+        action={
+          <div className="payments__empty-actions">
+            <Link to="/admin/alumnos/nuevo" className={buttonClass({ variant: 'primary' })}>
+              {words.manual}
+            </Link>
+            <Link to="/admin/alumnos/importar" className={buttonClass()}>
+              {words.import}
+            </Link>
+          </div>
+        }
+      >
+        {words.text}
+      </EmptyState>
+    </Card>
   )
 }
 

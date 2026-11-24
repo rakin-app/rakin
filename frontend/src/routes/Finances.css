@@ -27,18 +27,6 @@
   padding: 0 var(--space-4) var(--space-4);
 }
 
-.finances__stepper {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.finances__stepper-label {
-  min-width: 9rem;
-  text-align: center;
-  font-weight: var(--font-weight-semibold);
-}
-
 .finances__card {
   display: grid;
   gap: var(--space-4);

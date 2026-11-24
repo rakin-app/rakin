@@ -24,6 +24,7 @@ import { Input, Select } from '../components/Field'
 import { EntradaCard } from '../components/EntradaCard'
 import { ChevronRightIcon } from '../components/icons'
 import { Grid, PageContainer, useWide } from '../components/Layout'
+import { PeriodStepper } from '../components/PeriodStepper'
 import { PageHeader, PageTitle } from '../components/PageHeader'
 import { TagHoursCard } from '../components/TagHours'
 import { clockTime, isoDay, shiftDay, shiftMonth, shortDay, timeRange, toDate, weekdayDay, zonedInstant } from '../format'
@@ -71,16 +72,19 @@ const route = getRouteApi('/admin/clases')
  * attendance and its timer (#358): a coach opens Clases at the mat. "Crear clase", an
  * occasional action, is a button that opens its form.
  *
- * From 1024px the page has two columns (#178): the class now, "Crear clase" and the day on the left,
- * and on the right the week the day is in, with the class picked in it: who came, of
- * those who usually do. A phone keeps the one column, and never asks for the week. The
- * class now is on the page once (#416): picked on the right, it is the card there, "Ahora"
- * or "Siguiente", and the left drops its own.
+ * From 1024px the page has two columns (#178): the class now and "Crear clase" on the
+ * left, and on the right the week the day is in, with the class picked in it: who came, of
+ * those who usually do. The week lists the day's classes, so the left has no day list of
+ * its own, and the week's stepper is the page's one date navigator (#567). A phone keeps
+ * the one column, the day with its own stepper, and never asks for the week. The class
+ * now is on the page once (#416): picked on the right, it is the card there, "Ahora" or
+ * "Siguiente", and the left drops its own.
  *
- * The day and the month live in the URL (#426): "Ir a fecha" jumps to any day, the week
- * has arrows of its own, and "Mes" shows the month the day is in as a calendar, each day
- * with its classes and those unmarked or cancelled. A phone shows the month in place of
- * the day; from 1024px it takes the week's place, beside the day.
+ * The day and the month live in the URL (#426): "Ir a fecha" jumps to any day, and "Mes"
+ * shows the month the day is in as a calendar, each day with its classes and those
+ * unmarked or cancelled. Day, week and month each step with `PeriodStepper`, as the money
+ * screens do (#567). A phone shows the month in place of the day; from 1024px it takes
+ * the week's place, and the day picked in it is listed on the left.
  *
  * Under the day, "Horas por etiqueta" (#243): the gym's classes held in a month or a
  * year, hours per tag.
@@ -116,6 +120,7 @@ export function Classes() {
   const found = day.data && isToday ? nowOrNext(day.data.sessions, now) : null
   // Picked on the right, the class now is the card there.
   const nowPicked = found !== null && week.selected?.id === found.session.id
+  const dayTitle = withHoliday(isToday ? copy.today.title : weekdayDay(toDate(shown)), day.data?.holidays?.[0])
 
   return (
     <div className="classes">
@@ -139,36 +144,50 @@ export function Classes() {
                 jump={<JumpTo day={shown} onJump={(to) => go(to, false)} />}
               />
             ) : (
-            <section className="classes__section" aria-labelledby="classes-day">
-              <div className="classes__section-head">
-                <SectionTitle id="classes-day">
-                  {withHoliday(isToday ? copy.today.title : weekdayDay(toDate(shown)), day.data?.holidays?.[0])}
-                </SectionTitle>
-                {day.data && day.data.sessions.length > 0 && (
-                  <span className="classes__aside">{copy.today.count(day.data.sessions.length)}</span>
-                )}
-                {!wide && <ViewSwitch value="day" wide={false} onChange={setView} />}
-              </div>
-              <nav className="classes__days" aria-label={copy.days.label}>
-                <Button onClick={() => go(shiftDay(shown, -1))}>{copy.days.previous}</Button>
-                {(!isToday || month !== null) && <Button onClick={home}>{copy.days.today}</Button>}
-                <Button onClick={() => go(shiftDay(shown, 1))}>{copy.days.next}</Button>
-              </nav>
-              <JumpTo day={shown} onJump={(to) => go(to, wide)} />
-              {day.isPending ? (
-                <Loading className="classes__note">{copy.loading}</Loading>
-              ) : day.isError ? (
-                <Failed message={copy.today.error} retry={() => void day.refetch()} />
-              ) : day.data.sessions.length === 0 ? (
-                <p className="classes__note">{isToday ? copy.today.empty : copy.days.empty}</p>
-              ) : (
-                <PlainList className="classes__list">
-                  {day.data.sessions.map((session) => (
-                    <SessionRow key={session.id} session={session} timeZone={day.data.timezone} />
-                  ))}
-                </PlainList>
-              )}
-            </section>
+              // From 1024px the week lists the day's classes and walks the dates (#567): the
+              // day's own list is the month view's alone, the day picked in the calendar.
+              (!wide || month !== null) && (
+                <section className="classes__section" aria-labelledby="classes-day">
+                  <div className="classes__section-head">
+                    {wide ? (
+                      <SectionTitle id="classes-day">{dayTitle}</SectionTitle>
+                    ) : (
+                      <PeriodStepper
+                        label={copy.days.label}
+                        previous={copy.days.previous}
+                        next={copy.days.next}
+                        onPrevious={() => go(shiftDay(shown, -1))}
+                        onNext={() => go(shiftDay(shown, 1))}
+                      >
+                        <SectionTitle id="classes-day">{dayTitle}</SectionTitle>
+                      </PeriodStepper>
+                    )}
+                    {day.data && day.data.sessions.length > 0 && (
+                      <span className="classes__aside">{copy.today.count(day.data.sessions.length)}</span>
+                    )}
+                    {!wide && <ViewSwitch value="day" wide={false} onChange={setView} />}
+                  </div>
+                  {!wide && (
+                    <div className="classes__dates">
+                      {!isToday && <Button onClick={home}>{copy.days.today}</Button>}
+                      <JumpTo day={shown} onJump={(to) => go(to, false)} />
+                    </div>
+                  )}
+                  {day.isPending ? (
+                    <Loading className="classes__note">{copy.loading}</Loading>
+                  ) : day.isError ? (
+                    <Failed message={copy.today.error} retry={() => void day.refetch()} />
+                  ) : day.data.sessions.length === 0 ? (
+                    <p className="classes__note">{isToday ? copy.today.empty : copy.days.empty}</p>
+                  ) : (
+                    <PlainList className="classes__list">
+                      {day.data.sessions.map((session) => (
+                        <SessionRow key={session.id} session={session} timeZone={day.data.timezone} />
+                      ))}
+                    </PlainList>
+                  )}
+                </section>
+              )
             )}
             <TagHoursCard
               title={t.tagHours.gym}
@@ -185,7 +204,9 @@ export function Classes() {
                 timeZone={timeZone}
                 now={nowPicked ? found : null}
                 shift={(days) => go(shiftDay(shown, days))}
+                home={isToday ? undefined : home}
                 view={<ViewSwitch value="day" wide onChange={setView} />}
+                jump={<JumpTo day={shown} onJump={(to) => go(to, false)} />}
               />
             ) : (
               <div className="classes__column">
@@ -198,6 +219,7 @@ export function Classes() {
                   pick={pick}
                   home={home}
                   view={<ViewSwitch value="month" wide onChange={setView} />}
+                  jump={<JumpTo day={shown} onJump={(to) => go(to, true)} />}
                 />
               </div>
             ))}
@@ -247,7 +269,9 @@ function Week({
   timeZone,
   now,
   shift,
+  home,
   view,
+  jump,
 }: {
   week: ReturnType<typeof useWeek>
   today: string
@@ -255,7 +279,10 @@ function Week({
   now: NowOrNext | null
   // A week back (-7) or on (7): the day moves with it.
   shift: (days: number) => void
+  // Back to today; absent on today.
+  home?: () => void
   view: ReactNode
+  jump: ReactNode
 }) {
   const words = copy.week
   const { days, range, onDay, holidayOn, selected, setPicked, monday } = week
@@ -269,18 +296,23 @@ function Week({
           <p className="classes__note">{words.pick}</p>
         </Card>
       )}
-      <section className="classes__section" aria-labelledby="classes-week">
+      <section className="classes__section" aria-label={words.title}>
         <div className="classes__section-head">
-          <SectionTitle id="classes-week">
-            {words.title}
-          </SectionTitle>
-          <span className="classes__aside">{words.range(shortDay(monday), shortDay(shiftDay(monday, 6)))}</span>
+          <PeriodStepper
+            label={words.label}
+            previous={words.previous}
+            next={words.next}
+            onPrevious={() => shift(-7)}
+            onNext={() => shift(7)}
+          >
+            <SectionTitle>{words.range(shortDay(monday), shortDay(shiftDay(monday, 6)))}</SectionTitle>
+          </PeriodStepper>
           {view}
         </div>
-        <nav className="classes__days" aria-label={words.label}>
-          <Button onClick={() => shift(-7)}>{words.previous}</Button>
-          <Button onClick={() => shift(7)}>{words.next}</Button>
-        </nav>
+        <div className="classes__dates">
+          {home && <Button onClick={home}>{copy.days.today}</Button>}
+          {jump}
+        </div>
         {range.isPending ? (
           <Loading className="classes__note">{copy.loading}</Loading>
         ) : range.isError ? (
@@ -401,7 +433,7 @@ function Month({
   pick: (day: string) => void
   home: () => void
   view: ReactNode
-  jump?: ReactNode
+  jump: ReactNode
 }) {
   const words = copy.month
   const first = mondayOf(month)
@@ -421,15 +453,21 @@ function Month({
   return (
     <section className="classes__section" aria-labelledby="classes-month">
       <div className="classes__section-head">
-        <SectionTitle id="classes-month">{words.title(month)}</SectionTitle>
+        <PeriodStepper
+          label={words.label}
+          previous={words.previous}
+          next={words.next}
+          onPrevious={() => showMonth(shiftMonth(month, -1))}
+          onNext={() => showMonth(shiftMonth(month, 1))}
+        >
+          <SectionTitle id="classes-month">{words.title(month)}</SectionTitle>
+        </PeriodStepper>
         {view}
       </div>
-      <nav className="classes__days" aria-label={words.label}>
-        <Button onClick={() => showMonth(shiftMonth(month, -1))}>{words.previous}</Button>
+      <div className="classes__dates">
         {!atHome && <Button onClick={home}>{copy.days.today}</Button>}
-        <Button onClick={() => showMonth(shiftMonth(month, 1))}>{words.next}</Button>
-      </nav>
-      {jump}
+        {jump}
+      </div>
       {range.isPending ? (
         <Loading className="classes__note">{copy.loading}</Loading>
       ) : range.isError ? (
