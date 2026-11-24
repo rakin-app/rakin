@@ -1,6 +1,6 @@
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link } from '@tanstack/react-router'
-import { useId, useState, type FormEvent, type ReactElement, type ReactNode } from 'react'
+import { useId, useRef, useState, type FormEvent, type ReactElement, type ReactNode } from 'react'
 import { useGrades } from '../api/activities'
 import { personAttendanceQuery } from '../api/attendance'
 import { personTagHoursQuery, type Stretch } from '../api/classTags'
@@ -78,6 +78,8 @@ import { Button, buttonClass } from '../components/Button'
 import { Chip } from '../components/Chip'
 import { BackLink } from '../components/BackLink'
 import { Input, Select } from '../components/Field'
+import { useFocusOnOpen, useRefusal } from '../components/focusInvalid'
+import { cx } from '../components/classNames'
 import { ChevronRightIcon, WhatsAppIcon } from '../components/icons'
 import { Grid, PageContainer } from '../components/Layout'
 import { MemberMatTime } from '../components/MatTime'
@@ -954,8 +956,10 @@ function Fixes<F extends string>({
 }) {
   const [picked, setPicked] = useState<F | null>(null)
   const fix = fixes.length === 1 ? fixes[0] : picked !== null && fixes.includes(picked) ? picked : null
+  // Opened from a Libro line: focus lands in it, its first chip or its lone fix's first field (#569).
+  const panel = useFocusOnOpen<HTMLDivElement>()
   return (
-    <div className="member__fix" role="group" aria-label={title}>
+    <div ref={panel} className="member__fix" role="group" aria-label={title}>
       <span className="member__fix-title">{fixes.length === 1 ? copy.fix.only(title, label(fixes[0])) : title}</span>
       {fixes.length > 1 && (
         <div className="member__fix-choices">
@@ -1054,6 +1058,8 @@ function MoveDueDateForm({
   const [day, setDay] = useState('')
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const step = useConfirmStep()
   const dayOk = day >= earliest && day <= latest && day !== period.due_date
   const reasonOk = reason.trim() !== ''
@@ -1070,13 +1076,13 @@ function MoveDueDateForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!dayOk || !reasonOk) return
+    if (!dayOk || !reasonOk) return refuse()
     if (step.confirming) moved.mutate()
     else step.ask()
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={ids.day} className="member__label">
         {form.day}
@@ -1088,7 +1094,7 @@ function MoveDueDateForm({
         max={latest}
         value={day}
         readOnly={step.confirming}
-        aria-describedby={ids.hint}
+        aria-describedby={cx(ids.hint, checked && !dayOk && `${ids.day}-error`)}
         aria-invalid={checked && !dayOk}
         onChange={(e) => setDay(e.target.value)}
       />
@@ -1096,7 +1102,7 @@ function MoveDueDateForm({
         {form.hint(shortDay(period.due_date), shortDay(latest))}
       </p>
       {checked && !dayOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.day}-error`}>
           {day === period.due_date ? form.unchanged : form.dayNeeded(shortDay(earliest), shortDay(latest))}
         </Banner>
       )}
@@ -1110,10 +1116,11 @@ function MoveDueDateForm({
         value={reason}
         readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
+        aria-describedby={checked && !reasonOk ? `${ids.reason}-error` : undefined}
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.reason}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -1165,6 +1172,8 @@ function RestoreChargeForm({
   const month = monthName(period.period_start)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const step = useConfirmStep()
   const reasonOk = reason.trim() !== ''
 
@@ -1180,13 +1189,13 @@ function RestoreChargeForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!reasonOk || !period.void_id) return
+    if (!reasonOk || !period.void_id) return refuse()
     if (step.confirming) restored.mutate()
     else step.ask()
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.reason}
@@ -1198,10 +1207,11 @@ function RestoreChargeForm({
         value={reason}
         readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
+        aria-describedby={checked && !reasonOk ? `${id}-error` : undefined}
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${id}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -1246,6 +1256,8 @@ function VoidChargeForm({
   const month = monthName(period.period_start)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const step = useConfirmStep()
   const reasonOk = reason.trim() !== ''
 
@@ -1261,13 +1273,13 @@ function VoidChargeForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!reasonOk) return
+    if (!reasonOk) return refuse()
     if (step.confirming) voided.mutate()
     else step.ask()
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.reason}
@@ -1279,10 +1291,11 @@ function VoidChargeForm({
         value={reason}
         readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
+        aria-describedby={checked && !reasonOk ? `${id}-error` : undefined}
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${id}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -1332,6 +1345,8 @@ function WriteOffForm({
   const owed = clp(period.outstanding_clp)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const step = useConfirmStep()
   const reasonOk = reason.trim() !== ''
 
@@ -1347,13 +1362,13 @@ function WriteOffForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!reasonOk) return
+    if (!reasonOk) return refuse()
     if (step.confirming) forgiven.mutate()
     else step.ask()
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.reason}
@@ -1365,10 +1380,11 @@ function WriteOffForm({
         value={reason}
         readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
+        aria-describedby={checked && !reasonOk ? `${id}-error` : undefined}
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${id}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -1422,6 +1438,8 @@ function RevertForm({
   const month = monthName(period.period_start)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const step = useConfirmStep()
   const reasonOk = reason.trim() !== ''
   // An adjustment in the member's favour (positive) is owed once reverted, and the other way round.
@@ -1439,13 +1457,13 @@ function RevertForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!reasonOk) return
+    if (!reasonOk) return refuse()
     if (step.confirming) reverted.mutate()
     else step.ask()
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.reason}
@@ -1457,10 +1475,11 @@ function RevertForm({
         value={reason}
         readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
+        aria-describedby={checked && !reasonOk ? `${id}-error` : undefined}
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${id}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -1510,6 +1529,8 @@ function VoidPlanForm({
   const id = useId()
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const step = useConfirmStep()
   const reasonOk = reason.trim() !== ''
 
@@ -1529,13 +1550,13 @@ function VoidPlanForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!reasonOk) return
+    if (!reasonOk) return refuse()
     if (step.confirming) voided.mutate()
     else step.ask()
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.reason}
@@ -1547,10 +1568,11 @@ function VoidPlanForm({
         value={reason}
         readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
+        aria-describedby={checked && !reasonOk ? `${id}-error` : undefined}
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${id}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -1623,6 +1645,8 @@ function ReactivateForm({
   const [billFrom, setBillFrom] = useState<BillFrom>('last')
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const [confirming, setConfirming] = useState(false)
   const reasonOk = reason.trim() !== ''
   const bill = quote.data?.[billFrom]
@@ -1645,7 +1669,7 @@ function ReactivateForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!reasonOk || !bill) return
+    if (!reasonOk || !bill) return refuse()
     if (confirming) reactivated.mutate()
     else setConfirming(true)
   }
@@ -1679,7 +1703,7 @@ function ReactivateForm({
 
   if (confirming && bill) {
     return (
-      <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+      <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
         {lapsed ? (
           <p className="member__detail">{copy.uncancelForm.confirmLapsed}</p>
         ) : (
@@ -1718,7 +1742,7 @@ function ReactivateForm({
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{lapsed ? copy.uncancelForm.introLapsed : form.intro}</p>
       {returns && <p className="member__detail">{copy.uncancelForm.returns}</p>}
       {!choice && !lapsed && <p className="member__detail">{hints.last}</p>}
@@ -1745,10 +1769,11 @@ function ReactivateForm({
         maxLength={500}
         value={reason}
         aria-invalid={checked && !reasonOk}
+        aria-describedby={checked && !reasonOk ? `${id}-error` : undefined}
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${id}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -1797,6 +1822,8 @@ function FreezeForm({
   const [until, setUntil] = useState('')
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const fromOk = from >= first
   const untilOk = until > from
   const reasonOk = reason.trim() !== ''
@@ -1819,10 +1846,11 @@ function FreezeForm({
     event.preventDefault()
     setChecked(true)
     if (fromOk && untilOk && reasonOk) freeze.mutate()
+    else refuse()
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <label htmlFor={ids.from} className="member__label">
         {form.from}
       </label>
@@ -1832,10 +1860,11 @@ function FreezeForm({
         min={first}
         value={from}
         aria-invalid={checked && !fromOk}
+        aria-describedby={checked && !fromOk ? `${ids.from}-error` : undefined}
         onChange={(e) => setFrom(e.target.value)}
       />
       {checked && !fromOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.from}-error`}>
           {form.fromNeeded}
         </Banner>
       )}
@@ -1848,7 +1877,7 @@ function FreezeForm({
         type="date"
         min={addDays(fromOk ? from : first, 1)}
         value={until}
-        aria-describedby={ids.hint}
+        aria-describedby={cx(ids.hint, checked && !untilOk && `${ids.until}-error`)}
         aria-invalid={checked && !untilOk}
         onChange={(e) => setUntil(e.target.value)}
       />
@@ -1856,7 +1885,7 @@ function FreezeForm({
         {form.untilHint}
       </p>
       {checked && !untilOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.until}-error`}>
           {form.untilNeeded}
         </Banner>
       )}
@@ -1869,7 +1898,7 @@ function FreezeForm({
         type="text"
         maxLength={500}
         value={reason}
-        aria-describedby={ids.reasonHint}
+        aria-describedby={cx(ids.reasonHint, checked && !reasonOk && `${ids.reason}-error`)}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
@@ -1877,7 +1906,7 @@ function FreezeForm({
         {form.reasonHint}
       </p>
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.reason}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -1919,6 +1948,8 @@ function EditFreezeForm({
   const [until, setUntil] = useState(freeze.to_date)
   const [reason, setReason] = useState(freeze.reason)
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const moved = until !== freeze.to_date
   const untilOk = !moved || until >= first
   const reasonOk = reason.trim() !== ''
@@ -1932,10 +1963,11 @@ function EditFreezeForm({
     event.preventDefault()
     setChecked(true)
     if (untilOk && reasonOk) edit.mutate()
+    else refuse()
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <label htmlFor={ids.until} className="member__label">
         {form.until}
       </label>
@@ -1944,7 +1976,7 @@ function EditFreezeForm({
         type="date"
         min={first}
         value={until}
-        aria-describedby={ids.hint}
+        aria-describedby={cx(ids.hint, checked && !untilOk && `${ids.until}-error`)}
         aria-invalid={checked && !untilOk}
         onChange={(e) => setUntil(e.target.value)}
       />
@@ -1952,7 +1984,7 @@ function EditFreezeForm({
         {form.untilHint}
       </p>
       {checked && !untilOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.until}-error`}>
           {form.untilNeeded}
         </Banner>
       )}
@@ -1965,7 +1997,7 @@ function EditFreezeForm({
         type="text"
         maxLength={500}
         value={reason}
-        aria-describedby={ids.reasonHint}
+        aria-describedby={cx(ids.reasonHint, checked && !reasonOk && `${ids.reason}-error`)}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
@@ -1973,7 +2005,7 @@ function EditFreezeForm({
         {form.reasonHint}
       </p>
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.reason}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -2066,6 +2098,8 @@ export function PaymentForm({
   const [method, setMethod] = useState<Method>('cash')
   const [note, setNote] = useState('')
   const [amountNeeded, setAmountNeeded] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const value = Number(amount.replace(/\D/g, ''))
 
   const record = useSubmit({
@@ -2091,13 +2125,13 @@ export function PaymentForm({
     event.preventDefault()
     if (!value) {
       setAmountNeeded(true)
-      return
+      return refuse()
     }
     record.mutate()
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <label htmlFor={ids.period} className="member__label">
         {form.period}
       </label>
@@ -2125,10 +2159,11 @@ export function PaymentForm({
         inputMode="numeric"
         value={amount}
         aria-invalid={amountNeeded && !value}
+        aria-describedby={amountNeeded && !value ? `${ids.amount}-error` : undefined}
         onChange={(e) => setAmount(e.target.value)}
       />
       {amountNeeded && !value && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.amount}-error`}>
           {form.amountNeeded}
         </Banner>
       )}
@@ -2496,6 +2531,8 @@ function ChangeAmountForm({
   const [amount, setAmount] = useState(String(current))
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const step = useConfirmStep()
   const digits = amount.replace(/\D/g, '')
   const value = Number(digits)
@@ -2528,7 +2565,7 @@ function ChangeAmountForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!amountOk || !reasonOk) return
+    if (!amountOk || !reasonOk) return refuse()
     if (step.confirming) adjust.mutate()
     else step.ask()
   }
@@ -2537,7 +2574,7 @@ function ChangeAmountForm({
     digits === '' ? (checked ? form.amountNeeded : null) : owedAfter < 0 ? form.paidMore(clp(paid)) : change === 0 && checked ? form.sameAmount : null
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.current(clp(current))}</p>
       <label htmlFor={ids.amount} className="member__label">
         {form.amount}
@@ -2548,10 +2585,11 @@ function ChangeAmountForm({
         value={amount}
         readOnly={step.confirming}
         aria-invalid={amountError !== null}
+        aria-describedby={amountError ? `${ids.amount}-error` : undefined}
         onChange={(e) => setAmount(e.target.value)}
       />
       {amountError && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.amount}-error`}>
           {amountError}
         </Banner>
       )}
@@ -2566,10 +2604,11 @@ function ChangeAmountForm({
         value={reason}
         readOnly={step.confirming}
         aria-invalid={checked && !reasonOk}
+        aria-describedby={checked && !reasonOk ? `${ids.reason}-error` : undefined}
         onChange={(e) => setReason(e.target.value)}
       />
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.reason}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -2652,6 +2691,8 @@ function MoveForm({
   const [amount, setAmount] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const step = useConfirmStep()
 
   const movable = offered.data?.movable_clp ?? payment.refundable_clp
@@ -2710,7 +2751,7 @@ function MoveForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!amountOk || !reasonOk || !target || target.pending) return
+    if (!amountOk || !reasonOk || !target || target.pending) return refuse()
     if (step.confirming) moved.mutate()
     else step.ask()
   }
@@ -2719,7 +2760,7 @@ function MoveForm({
   const credit = target ? Math.max(value - target.outstanding_clp, 0) : 0
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={ids.target} className="member__label">
         {form.target}
@@ -2745,7 +2786,7 @@ function MoveForm({
         inputMode="numeric"
         value={wholeOnly ? String(movable) : (amount ?? String(movable))}
         readOnly={wholeOnly || step.confirming}
-        aria-describedby={ids.amountHint}
+        aria-describedby={cx(ids.amountHint, checked && !amountOk && `${ids.amount}-error`)}
         aria-invalid={checked && !amountOk}
         onChange={(e) => setAmount(e.target.value)}
       />
@@ -2753,7 +2794,7 @@ function MoveForm({
         {wholeOnly ? form.wholeOnly(clp(movable)) : form.amountHint(clp(movable))}
       </span>
       {checked && !amountOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.amount}-error`}>
           {value > movable ? form.beyond(clp(movable)) : form.amountNeeded}
         </Banner>
       )}
@@ -2767,7 +2808,7 @@ function MoveForm({
         maxLength={500}
         value={reason}
         readOnly={step.confirming}
-        aria-describedby={ids.reasonHint}
+        aria-describedby={cx(ids.reasonHint, checked && !reasonOk && `${ids.reason}-error`)}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
@@ -2775,7 +2816,7 @@ function MoveForm({
         {form.reasonHint}
       </span>
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.reason}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -2839,6 +2880,8 @@ function VoidPaymentForm({
   const hint = useId()
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const step = useConfirmStep()
   const person = useQuery(personQuery(personId))
   const welcome = useQuery(welcomeQuery(personId))
@@ -2862,13 +2905,13 @@ function VoidPaymentForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!reasonOk) return
+    if (!reasonOk) return refuse()
     if (step.confirming) undone.mutate()
     else step.ask()
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <p className="member__detail">{form.intro}</p>
       <label htmlFor={id} className="member__label">
         {form.reason}
@@ -2879,7 +2922,7 @@ function VoidPaymentForm({
         maxLength={500}
         value={reason}
         readOnly={step.confirming}
-        aria-describedby={hint}
+        aria-describedby={cx(hint, checked && !reasonOk && `${id}-error`)}
         aria-invalid={checked && !reasonOk}
         onChange={(e) => setReason(e.target.value)}
       />
@@ -2887,7 +2930,7 @@ function VoidPaymentForm({
         {form.reasonHint}
       </span>
       {checked && !reasonOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${id}-error`}>
           {form.reasonNeeded}
         </Banner>
       )}
@@ -2934,6 +2977,8 @@ function RefundForm({
   const [method, setMethod] = useState<Method>(payment.method ?? 'transfer')
   const [note, setNote] = useState('')
   const [amountNeeded, setAmountNeeded] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const step = useConfirmStep()
   const value = Number(amount.replace(/\D/g, ''))
   // A refund opens its payment's period again for what it gives back: no more than the
@@ -2961,14 +3006,14 @@ function RefundForm({
     event.preventDefault()
     if (!value) {
       setAmountNeeded(true)
-      return
+      return refuse()
     }
     if (step.confirming) refund.mutate()
     else step.ask()
   }
 
   return (
-    <form className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
+    <form ref={formRef} className={cardClass({}, 'member__form')} aria-label={form.title} onSubmit={submit}>
       <label htmlFor={ids.payment} className="member__label">
         {form.payment}
       </label>
@@ -3002,10 +3047,11 @@ function RefundForm({
         value={amount}
         readOnly={step.confirming}
         aria-invalid={amountNeeded && !value}
+        aria-describedby={amountNeeded && !value ? `${ids.amount}-error` : undefined}
         onChange={(e) => setAmount(e.target.value)}
       />
       {amountNeeded && !value && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${ids.amount}-error`}>
           {form.amountNeeded}
         </Banner>
       )}

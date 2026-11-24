@@ -1467,6 +1467,26 @@ describe('Ficha de alumno', () => {
     ])
   })
 
+  it('a Libro line opened puts focus in it, and a fix refused focuses its Motivo, read with its error (#569)', async () => {
+    stubApi()
+    renderAt(PATH)
+    const fixes = await fixLine(/^Pago septiembre/, copy.fix.payment('septiembre'))
+    // Its first choice, not the line's button behind it.
+    expect(within(fixes).getByRole('button', { name: copy.fix.move })).toHaveFocus()
+
+    await userEvent.click(within(fixes).getByRole('button', { name: copy.fix.voidPayment }))
+    const form = within(fixes).getByRole('form', { name: copy.voidPaymentForm.title })
+    const submit = within(form).getByRole('button', { name: copy.voidPaymentForm.submit('$45.000') })
+    const reason = within(form).getByLabelText(copy.voidPaymentForm.reason)
+    await userEvent.click(submit)
+    expect(reason).toHaveFocus()
+    expect(reason).toHaveAccessibleDescription(`${copy.voidPaymentForm.reasonHint} ${copy.voidPaymentForm.reasonNeeded}`)
+
+    // Every refusal, not the first alone.
+    await userEvent.click(submit)
+    expect(reason).toHaveFocus()
+  })
+
   it('says when no notice goes out, and goes back a step to change the reason (#281)', async () => {
     stubApi({
       extra: (path) =>
@@ -3297,6 +3317,8 @@ describe('the record and the ways out (#157)', () => {
 
     await userEvent.click(within(await actions()).getByRole('button', { name: copy.leave }))
     const form = screen.getByRole('form', { name: copy.leaveForm.title })
+    // Opened, focus is in it: on its day (#569).
+    expect(within(form).getByLabelText(copy.leaveForm.on)).toHaveFocus()
     const chips = within(form).getByRole('group', { name: copy.leftReason.chipsLabel })
     expect(within(chips).getAllByRole('button').map((b) => b.textContent)).toEqual(copy.leftReason.chips)
     // Nothing about health, which a gym may not keep (#384).

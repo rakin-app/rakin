@@ -32,6 +32,7 @@ import { Disclosure } from '../components/Disclosure'
 import { Banner, Card, cardClass, PlainList } from '../components/Card'
 import { cx } from '../components/classNames'
 import { Field, FieldError, Input, Select, Textarea } from '../components/Field'
+import { useRefusal } from '../components/focusInvalid'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon } from '../components/icons'
 import { PageContainer } from '../components/Layout'
 import { Loading } from '../components/Loading'
@@ -458,6 +459,8 @@ function ExpenseForm({
   const [file, setFile] = useState<File | null>(null)
   const [removeReceipt, setRemoveReceipt] = useState(false)
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const receiptId = useId()
   const receiptLabelId = useId()
 
@@ -496,7 +499,7 @@ function ExpenseForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setChecked(true)
-    if (!amountOk || !dayOk || !categoryOk || fileProblem) return
+    if (!amountOk || !dayOk || !categoryOk || fileProblem) return refuse()
     const receipt: ReceiptChange = file ? { file } : removeReceipt ? 'remove' : null
     save.mutate({ draft: draft(), receipt })
   }
@@ -504,7 +507,7 @@ function ExpenseForm({
 
   const title = expense ? words.editTitle : from ? copy.due.recordWhat(from.category_name) : words.newTitle
   return (
-    <form className={cardClass({}, 'expenses__form')} aria-label={title} onSubmit={submit} noValidate>
+    <form ref={formRef} className={cardClass({}, 'expenses__form')} aria-label={title} onSubmit={submit} noValidate>
       <h2 className="expenses__form-title">{title}</h2>
       <div className="expenses__fields">
         <Field label={words.spentOn} hint={words.spentOnHint} error={checked && !dayOk && words.dayNeeded}>
@@ -584,7 +587,8 @@ function ExpenseForm({
               type="file"
               accept="image/jpeg,image/png,image/webp,image/heic,.heic,.heif,application/pdf"
               aria-labelledby={receiptLabelId}
-              aria-describedby={`${receiptId}-hint`}
+              aria-invalid={checked && fileError !== null}
+              aria-describedby={cx(`${receiptId}-hint`, checked && fileError !== null && `${receiptId}-error`)}
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
             <label htmlFor={receiptId} className={buttonClass()}>
@@ -595,7 +599,7 @@ function ExpenseForm({
           <p id={`${receiptId}-hint`} className="field__hint">
             {expense?.has_receipt && !file ? (removeReceipt ? words.receiptRemoved : words.receiptKept) : words.receiptHint}
           </p>
-          {checked && fileError && <FieldError>{fileError}</FieldError>}
+          {checked && fileError && <FieldError id={`${receiptId}-error`}>{fileError}</FieldError>}
         </div>
         {expense?.has_receipt && !file && (
           <div className="expenses__wide">
@@ -633,6 +637,8 @@ function VoidForm({
   const reasonId = useId()
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refuse = useRefusal(formRef)
   const reasonOk = reason.trim() !== ''
   const cancel = useSubmit({
     offline: 'refuse',
@@ -646,10 +652,11 @@ function VoidForm({
     event.preventDefault()
     setChecked(true)
     if (reasonOk) cancel.mutate()
+    else refuse()
   }
   const title = words.title(`${expense.category_name} · ${clp(expense.amount_clp)}`)
   return (
-    <form className={cardClass({}, 'expenses__form')} aria-label={title} onSubmit={submit} noValidate>
+    <form ref={formRef} className={cardClass({}, 'expenses__form')} aria-label={title} onSubmit={submit} noValidate>
       <h2 className="expenses__form-title">{title}</h2>
       <p className="expenses__meta">{words.intro}</p>
       <label htmlFor={reasonId} className="field__label">
@@ -660,9 +667,14 @@ function VoidForm({
         maxLength={500}
         value={reason}
         aria-invalid={checked && !reasonOk}
+        aria-describedby={checked && !reasonOk ? `${reasonId}-error` : undefined}
         onChange={(e) => setReason(e.target.value)}
       />
-      {checked && !reasonOk && <Banner tone="error">{words.reasonNeeded}</Banner>}
+      {checked && !reasonOk && (
+        <Banner tone="error" id={`${reasonId}-error`}>
+          {words.reasonNeeded}
+        </Banner>
+      )}
       {cancel.error && <Banner tone="error">{words.failed}</Banner>}
       <div className="expenses__form-actions">
         <Button disabled={cancel.isPending} onClick={onCancel}>

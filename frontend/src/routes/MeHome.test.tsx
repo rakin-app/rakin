@@ -190,6 +190,8 @@ describe('Material de estudio (#537)', () => {
     expect(section.getByText(copy.material.since('Fundamentos', '3 nov'))).toBeInTheDocument()
     expect(section.getAllByText(copy.material.sharedBy('Profe Prueba'))).toHaveLength(2)
     expect(section.queryByRole('link')).not.toBeInTheDocument()
+    // Each says it opens, with the Libro rows' chevron (#569).
+    for (const row of rows) expect(row.querySelector('.my-material__chevron svg')).not.toBeNull()
 
     await userEvent.setup().click(rows[0]!)
     expect(rows[0]).toHaveAttribute('aria-expanded', 'true')
