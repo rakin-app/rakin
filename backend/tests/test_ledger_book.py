@@ -4,8 +4,9 @@ Every entry of a month newest first, with whose membership it is, the guardian w
 pays for them and its period; the filters; and the KPIs: what the month collected
 and expects, and what is pending and overdue today.
 
-Each test takes a gym of its own (`seed_gym`, whose pending charge is in the current
-month's book) and bills its members with `bill`, whose entries are made now.
+Each test takes a gym of its own (`seed_gym`, whose pending charge is in the book of
+`SEEDED_PERIOD_START`'s month) and bills its members with `bill`, whose entries are made
+now, and whose charges are in the month their period starts.
 """
 
 import uuid
@@ -22,6 +23,7 @@ from tests.auth import FakeAuth, as_gym
 from tests.conftest import make_settings, require_test_database_url
 from tests.ids import unique_slug
 from tests.pg import (
+    SEEDED_PERIOD_START,
     Database,
     migrate,
     run,
@@ -59,6 +61,13 @@ def client(db: Database) -> Iterator[TestClient]:
 @pytest.fixture
 def sur(db: Database) -> uuid.UUID:
     return seed_gym(db, unique_slug("academia-sur"))
+
+
+def this_month(days: int) -> int:
+    """`days` from today, but not before this month's 1st: a charge is in the month its
+    period starts, so one dated in last month is not on this month's page, which read
+    on any of a month's first days (#586)."""
+    return max(days, 1 - seeded_today().day)
 
 
 def book(client: TestClient, gym: uuid.UUID, person: uuid.UUID | None = None, **params: Any) -> Any:
@@ -141,8 +150,8 @@ def test_the_month_is_every_entry_newest_first_with_its_member_and_period(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     ana = add_person(client, sur, "Ana")
-    # 9 days late and part-paid.
-    bill(db, sur, ana, [(-9, 45000, 10000, 0)])
+    # Up to 9 days late, and part-paid.
+    bill(db, sur, ana, [(this_month(-9), 45000, 10000, 0)])
 
     found = read(client, sur)
 
@@ -162,8 +171,9 @@ def test_the_month_is_every_entry_newest_first_with_its_member_and_period(
     due = date.fromisoformat(period["due_date"])
     assert period["outstanding_clp"] == 35000
     assert period["days_overdue"] == max((today - due).days, 0)
-    # The seeded owner's pending charge is in the month too.
-    assert {e["person"]["name"] for e in found["items"]} == {"Ana", f"owner of {slug(db, sur)}"}
+    # The seeded owner's pending charge is in the month too, when it is that one's.
+    owner = {f"owner of {slug(db, sur)}"} if today.replace(day=1) == SEEDED_PERIOD_START else set()
+    assert {e["person"]["name"] for e in found["items"]} == {"Ana"} | owner
     assert found["total"] == len(found["items"])
 
 
@@ -172,7 +182,7 @@ def test_a_recorded_payment_names_who_validated_it_and_how_it_came(
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     ana = add_person(client, sur, "Ana")
-    membership = bill(db, sur, ana, [(-1, 30000, 0, 0)])
+    membership = bill(db, sur, ana, [(this_month(-1), 30000, 0, 0)])
     period = client.get(f"/api/ledger/memberships/{membership}", headers=as_gym(sur)).json()
     body = {
         "membership_id": membership,
@@ -198,8 +208,8 @@ def test_a_dependents_entries_carry_their_guardian_and_are_the_kids_filter(
 ) -> None:
     marta = add_person(client, sur, "Marta")
     juan = new_kid(client, sur, marta, "Juan")
-    bill(db, sur, juan, [(-3, 30000, 0, 0)])
-    bill(db, sur, marta, [(-3, 45000, 0, 0)])
+    bill(db, sur, juan, [(this_month(-3), 30000, 0, 0)])
+    bill(db, sur, marta, [(this_month(-3), 45000, 0, 0)])
 
     everything = read(client, sur)
     kids = read(client, sur, filter="kids")
@@ -219,8 +229,8 @@ def test_search_keeps_the_members_it_finds_by_name_phone_or_rut(
     bea = add_person(client, sur, "Bea")
     rut = "UPDATE gym_person SET rut = '7654321-6' WHERE person_id = $1"
     as_owner(db, sur, rut, uuid.UUID(bea))
-    bill(db, sur, ana, [(-3, 30000, 0, 0)])
-    bill(db, sur, bea, [(-3, 45000, 0, 0)])
+    bill(db, sur, ana, [(this_month(-3), 30000, 0, 0)])
+    bill(db, sur, bea, [(this_month(-3), 45000, 0, 0)])
 
     # As the member list searches: accents and case ignored, phone and RUT in any format.
     assert names(read(client, sur, q="nunez")) == [("Ana Núñez", "charge", 30000)]
@@ -240,8 +250,8 @@ def test_search_finds_a_guardians_dependents_within_the_filter(
 ) -> None:
     marta = add_person(client, sur, "Marta")
     juan = new_kid(client, sur, marta, "Juan")
-    bill(db, sur, juan, [(-3, 30000, 0, 10000)])
-    bill(db, sur, marta, [(-3, 45000, 0, 0)])
+    bill(db, sur, juan, [(this_month(-3), 30000, 0, 10000)])
+    bill(db, sur, marta, [(this_month(-3), 45000, 0, 0)])
 
     assert sorted(names(read(client, sur, q="marta"))) == [
         ("Juan", "charge", 30000),
@@ -344,7 +354,7 @@ def test_another_month_shows_its_own_entries_and_every_month_with_entries_is_off
     client: TestClient, db: Database, sur: uuid.UUID
 ) -> None:
     ana = add_person(client, sur, "Ana")
-    membership = bill(db, sur, ana, [(-1, 30000, 0, 0)])
+    membership = bill(db, sur, ana, [(this_month(-1), 30000, 0, 0)])
     # Late on March 31 in Santiago, which is April 1 in UTC: Santiago's March.
     dated_entry(db, sur, membership, "payment", 9000, datetime(2020, 4, 1, 2, 30, tzinfo=UTC))
     dated_entry(db, sur, membership, "charge", 30000, datetime(2020, 3, 1, 12, tzinfo=UTC))
@@ -357,7 +367,8 @@ def test_another_month_shows_its_own_entries_and_every_month_with_entries_is_off
     # A carried credit or any entry with no period has none to show.
     assert march["items"][0]["period"] is None
     assert ("Ana", "payment", 9000) not in names(current)
-    assert current["months"] == [seeded_today().replace(day=1).isoformat(), "2020-03-01"]
+    months = {seeded_today().replace(day=1), SEEDED_PERIOD_START, date(2020, 3, 1)}
+    assert current["months"] == [m.isoformat() for m in sorted(months, reverse=True)]
     # A month with no entries is still a month to show, and offered.
     empty = read(client, sur, month="2019-01-01")
     assert (empty["items"], empty["total"]) == ([], 0)

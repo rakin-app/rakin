@@ -313,11 +313,13 @@ def test_paying_ahead_emails_one_receipt_for_the_whole(
 def test_the_receipt_runs_to_the_end_of_a_free_period_paid_through(
     client: TestClient, db: Database, sur: uuid.UUID, mailer: RecordingMailer
 ) -> None:
-    today = seeded_today()
-    _, membership = paid_up(client, sur)
+    # Not past the 28th: a plan change re-anchors on the day it starts, so from a 31st
+    # the free plan would start on Feb 28 and run to Mar 27, not a month on (#586).
+    start = seeded_today().replace(day=min(seeded_today().day, 28))
+    _, membership = paid_up(client, sur, started_on=start.isoformat())
     free = plan(client, sur, {**MONTHLY, "name": "Becado", "price_clp": 0})
     # The second month ahead is on a free plan: billed, but nothing to pay on it.
-    second = date.fromisoformat(month_span(today, 2)[0])
+    second = date.fromisoformat(month_span(start, 2)[0])
     run(
         db.admin_url,
         lambda c: c.execute(
@@ -334,7 +336,7 @@ def test_the_receipt_runs_to_the_end_of_a_free_period_paid_through(
 
     assert len(recorded["payments"]) == 1
     [email] = mailer.sent
-    assert recorded["paid_through"] == month_span(today, 2)[1]
+    assert recorded["paid_through"] == month_span(start, 2)[1]
     end = date.fromisoformat(recorded["paid_through"])
     assert f"al {end:%d-%m-%Y}." in email.text
 
