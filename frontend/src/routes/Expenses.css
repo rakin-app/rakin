@@ -44,18 +44,6 @@
   gap: var(--space-3);
 }
 
-.expenses__month {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.expenses__month-label {
-  min-width: 9rem;
-  text-align: center;
-  font-weight: var(--font-weight-semibold);
-}
-
 .expenses__filter {
   flex: 1 1 12rem;
   max-width: 20rem;

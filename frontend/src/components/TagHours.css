@@ -1,20 +1,9 @@
 /* "Horas por etiqueta" (#243): the student page's, the ficha's and Clases' card. Its
    bars are `BarList`'s. */
 
-/* ‹ noviembre 2026 › */
+/* ‹ noviembre 2026 ›, PeriodStepper's (#567), across the card. */
 .tag-hours__stretch {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.tag-hours__stretch-label {
-  font-weight: var(--font-weight-semibold);
-}
-
-.tag-hours__stretch-label::first-letter {
-  text-transform: uppercase;
 }
 
 /* "1 clase sin duración, no suma horas" (#257), and a link to each to set it. */

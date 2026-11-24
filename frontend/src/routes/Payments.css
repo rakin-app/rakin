@@ -44,29 +44,10 @@
   gap: var(--space-2);
 }
 
-.payments__month {
+.payments__empty-actions {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
-  min-height: var(--control-height);
-  padding: 0 var(--space-3);
-  background: var(--color-surface);
-  /* Drawn inside the box, not as a border, so the select stretches to the full 44px (#419). */
-  box-shadow: inset 0 0 0 1px var(--color-border-input);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-}
-
-.payments__month-select {
-  background: transparent;
-  border: 0;
-  color: var(--color-text);
-  font: inherit;
-  /* 16px, or iOS Safari zooms in on focus; the whole box is its target. */
-  font-size: var(--text-input);
-  font-weight: var(--font-weight-semibold);
-  align-self: stretch;
 }
 
 .payments__record-panel {

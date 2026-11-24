@@ -322,7 +322,7 @@ describe('Alumnos', () => {
     expect(within(select).getAllByRole('option')[0]).toHaveTextContent(copy.allRanks)
 
     const groups = within(select).getAllByRole('group')
-    expect(groups.map((g) => g.getAttribute('label'))).toEqual(['Adultos', 'Kids'])
+    expect(groups.map((g) => g.getAttribute('label'))).toEqual(['Adultos', 'Infantil'])
     // The top of a ladder "o superior" is that belt alone: offered once.
     expect(within(groups[0]!).getAllByRole('option').map((o) => o.textContent)).toEqual([
       'Blanca',

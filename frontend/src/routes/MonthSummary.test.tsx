@@ -222,16 +222,37 @@ describe('Resumen del mes', () => {
     expect(screen.queryByText(copy.how.kept)).toBeNull()
   })
 
-  it('asks for the month picked', async () => {
+  it('steps to the month before with the month stepper (#567)', async () => {
     const user = userEvent.setup()
     const calls = stubApi('owner', (month) => (month === '2026-10' ? { ...EMPTY, month: '2026-10-01' } : NOVEMBER))
     renderAt('/admin/pagos/resumen')
     await screen.findByText(copy.paidLabel)
 
-    await user.selectOptions(screen.getByLabelText(copy.month), '2026-10-01')
+    const stepper = screen.getByRole('group', { name: copy.month })
+    expect(within(stepper).getByRole('button', { name: copy.next })).toBeDisabled()
+    await user.click(within(stepper).getByRole('button', { name: copy.previous }))
 
     expect(await screen.findByText(copy.nothing)).toBeInTheDocument()
     expect(calls.some((c) => c.path === '/api/summary?month=2026-10')).toBe(true)
+    expect(within(stepper).getByText('Octubre 2026')).toBeInTheDocument()
+    expect(within(stepper).getByRole('button', { name: copy.previous })).toBeDisabled()
+  })
+
+  it('says the month once, in the stepper, not again over the card (#567)', async () => {
+    stubApi('owner')
+    renderAt('/admin/pagos/resumen')
+    await screen.findByText(copy.paidLabel)
+
+    expect(screen.getAllByText('Noviembre 2026')).toHaveLength(1)
+  })
+
+  it('heads the counts "Números del mes" when no main figure comes before them (#567)', async () => {
+    stubApi('owner', () => ({ ...EMPTY, emails_sent: 12, reactivated: 2 }))
+    renderAt('/admin/pagos/resumen')
+
+    const counts = within(await screen.findByRole('region', { name: copy.countsAlone }))
+    expect(counts.getByText(copy.emailsSent).nextSibling).toHaveTextContent('12')
+    expect(screen.queryByText(/Otros/)).toBeNull()
   })
 
   it('tells a coach it is not for them and asks the API nothing', async () => {

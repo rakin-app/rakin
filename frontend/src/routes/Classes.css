@@ -63,14 +63,16 @@
 
 .classes__section-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
-/* The day's arrows, under its title: one row, the earlier day on the left. */
-.classes__days {
+/* Under the stepper (#567): back to "Hoy", and "Ir a fecha", on one row. */
+.classes__dates {
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
   gap: var(--space-2);
 }
 
@@ -365,10 +367,6 @@
   gap: var(--space-2);
   min-height: var(--control-height);
   font-size: var(--text-md);
-}
-
-.classes__days > .button:last-child {
-  margin-left: auto;
 }
 
 .class-edit__field .control {

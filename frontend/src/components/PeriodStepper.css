@@ -1,0 +1,24 @@
+/* ‹ Noviembre 2026 › (#567): two 44px arrows and the period between them, the same in
+   every screen that walks months, days, weeks or years. */
+
+.period-stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.period-stepper__shown {
+  min-width: 9rem;
+  text-align: center;
+  font-weight: var(--font-weight-semibold);
+}
+
+.period-stepper__shown::first-letter {
+  text-transform: uppercase;
+}
+
+/* A heading in the middle (Clases' day, week and month) keeps its own size, not a margin. */
+.period-stepper__shown > :is(h2, h3) {
+  margin: 0;
+}

@@ -73,7 +73,7 @@ const REQUIREMENTS_SHOWN = 5
  * "Falta apoderado", when there is anyone: the minors with no guardian, to whom Rakin
  * sends nothing until the gym adds one (#368), each a tap from their ficha.
  *
- * "Requisitos", when there is anyone (#350): people with a live membership who lack one
+ * "Requisitos", when there is anyone (#350), after Por validar and Vencidos (#567): people with a live membership who lack one
  * of the gym's requirements or whose one expired, then those whose one expires within 30
  * days, each a tap from their ficha. A coach's Hoy has it too, with the requirements a
  * coach sees.
@@ -242,7 +242,6 @@ function OwnerToday() {
         <JoinRequests />
         <FreezeRequests />
         <MissingGuardians />
-        <RequirementsDueCard />
         <Card id="validar" className="today__section" aria-labelledby="validar-title">
           <SectionHead
             id="validar-title"
@@ -289,6 +288,8 @@ function OwnerToday() {
             </PlainList>
           </Card>
         )}
+        {/* After the money the owner acts on, never above it (#567). */}
+        <RequirementsDueCard />
         <Card id="inactivos" className="today__section" aria-labelledby="inactivos-title">
           <SectionHead
             id="inactivos-title"

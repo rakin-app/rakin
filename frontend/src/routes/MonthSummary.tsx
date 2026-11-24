@@ -1,6 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import { useId } from 'react'
 import { myAccessQuery, readsLedger } from '../api/me'
 import { summaryQuery, type MonthSummary as Summary } from '../api/summary'
 import { Button } from '../components/Button'
@@ -10,6 +9,7 @@ import { cx } from '../components/classNames'
 import { PageContainer } from '../components/Layout'
 import { Loading } from '../components/Loading'
 import { PageHeader } from '../components/PageHeader'
+import { monthNeighbours, PeriodStepper } from '../components/PeriodStepper'
 import { t } from '../i18n/es'
 import { usePageTitle } from '../pageTitle'
 import { SubHeader } from './ExtraCharges'
@@ -64,28 +64,16 @@ function SummaryPage() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
   const summary = useQuery({ ...summaryQuery(search.month), placeholderData: keepPreviousData })
-  const monthId = useId()
   const shown = summary.data
 
   return (
     <PageContainer className="summary">
       <SubHeader title={copy.title} subtitle={copy.subtitle} />
-      <label htmlFor={monthId} className="summary__month">
-        {copy.month}
-        <select
-          id={monthId}
-          className="summary__month-select"
-          value={shown?.month ?? search.month ?? ''}
-          disabled={!shown}
-          onChange={(event) => void navigate({ search: { month: event.target.value }, replace: true })}
-        >
-          {(shown?.months ?? []).map((month) => (
-            <option key={month} value={month}>
-              {t.common.month(month, '')}
-            </option>
-          ))}
-        </select>
-      </label>
+      <MonthStepper
+        months={shown?.months ?? []}
+        month={shown?.month ?? search.month}
+        onMonth={(month) => void navigate({ search: { month }, replace: true })}
+      />
       {summary.isPending ? (
         <Loading className="summary__note">{copy.loading}</Loading>
       ) : summary.isError && !shown ? (
@@ -97,6 +85,30 @@ function SummaryPage() {
         shown && <Figures summary={shown} />
       )}
     </PageContainer>
+  )
+}
+
+/** The months the API lists, newest first, a step at a time: ‹ Noviembre 2026 ›. */
+function MonthStepper({
+  months,
+  month,
+  onMonth,
+}: {
+  months: readonly string[]
+  month: string | undefined
+  onMonth: (month: string) => void
+}) {
+  const { older, newer } = monthNeighbours(months, month)
+  return (
+    <PeriodStepper
+      label={copy.month}
+      previous={copy.previous}
+      next={copy.next}
+      onPrevious={older ? () => onMonth(older) : undefined}
+      onNext={newer ? () => onMonth(newer) : undefined}
+    >
+      {month ? t.common.month(month, '') : ''}
+    </PeriodStepper>
   )
 }
 
@@ -167,11 +179,9 @@ function Figures({ summary }: { summary: Summary }) {
 
   return (
     <>
-      <Card className="summary__card" aria-labelledby="summary-month">
-        <h2 id="summary-month" className="summary__heading">
-          {t.common.month(summary.month, '')}
-          {summary.since && <span className="summary__since">{copy.since(t.common.longDay(summary.since))}</span>}
-        </h2>
+      {/* The month is the stepper's, above: the card does not say it again (#567). */}
+      <Card className="summary__card" aria-label={copy.cardLabel(t.common.month(summary.month, ''))}>
+        {summary.since && <p className="summary__since">{copy.since(t.common.longDay(summary.since))}</p>}
         {tiles.length > 0 && (
           <PlainList className="summary__tiles" aria-label={copy.tiles}>
             {tiles.map((tile) => (
@@ -183,17 +193,17 @@ function Figures({ summary }: { summary: Summary }) {
         {!summary.whatsapp && <p className="summary__empty">{copy.whatsappOff}</p>}
         {split.length > 0 && (
           <section className="summary__section" aria-labelledby="summary-split">
-            <h3 id="summary-split" className="summary__subheading">
+            <h2 id="summary-split" className="summary__subheading">
               {copy.split}
-            </h3>
+            </h2>
             <BarList bars={split} />
           </section>
         )}
         {counts.length > 0 && (
           <section className="summary__section" aria-labelledby="summary-counts">
-            <h3 id="summary-counts" className="summary__subheading">
-              {copy.counts}
-            </h3>
+            <h2 id="summary-counts" className="summary__subheading">
+              {tiles.length === 0 && split.length === 0 ? copy.countsAlone : copy.counts}
+            </h2>
             <dl className="summary__counts">
               {counts.map((count) => (
                 <div key={count.key} className="summary__count">

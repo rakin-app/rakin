@@ -7,7 +7,7 @@ import type { RosterMember } from '../api/attendance'
 import type { ClassTag, TagHours } from '../api/classTags'
 import type { ClassSession, ClassType, SessionDay } from '../api/sessions'
 import { App } from '../App'
-import { isoDay, shiftDay, toDate, weekdayDay, zonedInstant } from '../format'
+import { isoDay, shiftDay, shortDay, toDate, weekdayDay, zonedInstant } from '../format'
 import { es } from '../i18n/es'
 import { createAppRouter } from '../router'
 import { mondayOf, nowOrNext, validateClassesSearch } from './Classes'
@@ -255,7 +255,7 @@ describe('Clases', () => {
     expect(await within(today).findByRole('link')).toHaveTextContent(copy.today.row('19:00–20:30', 'Fundamentos'))
 
     const tomorrow = shiftDay(isoDay(new Date().toISOString(), 'America/Santiago'), 1)
-    const days = within(today).getByRole('navigation', { name: copy.days.label })
+    const days = within(today).getByRole('group', { name: copy.days.label })
     await userEvent.click(within(days).getByRole('button', { name: copy.days.next }))
     const next = await screen.findByRole('region', { name: weekdayDay(toDate(tomorrow)) })
     expect(calls.map((c) => c.path)).toContain(`/api/sessions?date=${tomorrow}`)
@@ -272,16 +272,16 @@ describe('Clases', () => {
 
     const shown = await screen.findByRole('region', { name: weekdayDay(toDate(past)) })
     await vi.waitFor(() => expect(calls.map((c) => c.path)).toContain(`/api/sessions?date=${past}`))
-    const days = within(shown).getByRole('navigation', { name: copy.days.label })
+    const days = within(shown).getByRole('group', { name: copy.days.label })
     await userEvent.click(within(days).getByRole('button', { name: copy.days.previous }))
-    await userEvent.click(within(screen.getByRole('navigation', { name: copy.days.label })).getByRole('button', { name: copy.days.previous }))
+    await userEvent.click(within(screen.getByRole('group', { name: copy.days.label })).getByRole('button', { name: copy.days.previous }))
     expect(router.state.location.search).toEqual({ day: shiftDay(past, -2) })
 
     act(() => router.history.back())
     act(() => router.history.back())
     expect(await screen.findByRole('region', { name: weekdayDay(toDate(past)) })).toBeInTheDocument()
 
-    await userEvent.click(within(screen.getByRole('navigation', { name: copy.days.label })).getByRole('button', { name: copy.days.today }))
+    await userEvent.click(within(screen.getByRole('region', { name: weekdayDay(toDate(past)) })).getByRole('button', { name: copy.days.today }))
     expect(router.state.location.search).toEqual({})
     expect(await screen.findByRole('region', { name: copy.today.title })).toBeInTheDocument()
   })
@@ -775,6 +775,24 @@ describe('Clases on a desktop', () => {
     expect(within(screen.getByRole('region', { name: copy.week.picked })).getByRole('link', { name: copy.week.take })).toBeInTheDocument()
   })
 
+  it('has one date navigator at 1280, the week, and lists each class once (#567)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-11T15:00:00Z'))
+    wide(true)
+    const calls = stubApi({ week: [{ ...MORNING, starts_at: onDay('2026-11-11', '07:00') }] })
+    renderAt('/admin/clases')
+
+    const week = await screen.findByRole('region', { name: copy.week.title })
+    expect(screen.getAllByRole('group', { name: /^Cambiar de (día|semana|mes)$/ })).toEqual([
+      within(week).getByRole('group', { name: copy.week.label }),
+    ])
+    expect(screen.getAllByLabelText(copy.days.jump)).toHaveLength(1)
+    // No day list beside the week: today's class is the week's alone.
+    expect(screen.queryByRole('region', { name: copy.today.title })).not.toBeInTheDocument()
+    expect(await within(week).findAllByRole('button', { name: new RegExp(copy.today.row('07:00', 'Kids 8 a 12')) })).toHaveLength(1)
+    expect(calls.filter((c) => c.path.startsWith('/api/sessions/range'))).not.toEqual([])
+  })
+
   it('never asks for the week on a phone', async () => {
     wide(false)
     const calls = stubApi()
@@ -794,12 +812,14 @@ describe('Clases on a desktop', () => {
     const router = renderAt('/admin/clases')
 
     const week = await screen.findByRole('region', { name: copy.week.title })
-    const arrows = within(week).getByRole('navigation', { name: copy.week.label })
+    const arrows = within(week).getByRole('group', { name: copy.week.label })
     await userEvent.click(within(arrows).getByRole('button', { name: copy.week.previous }))
     expect(router.state.location.search).toEqual({ day: '2026-11-04' })
-    expect(await screen.findByRole('region', { name: weekdayDay(toDate('2026-11-04')) })).toBeInTheDocument()
+    expect(await within(arrows).findByRole('heading', { name: copy.week.range(shortDay('2026-11-02'), shortDay('2026-11-08')) })).toBeInTheDocument()
     await vi.waitFor(() => expect(calls.map((c) => c.path)).toContain('/api/sessions/range?from=2026-11-02&to=2026-11-08'))
-    await userEvent.click(within(screen.getByRole('navigation', { name: copy.week.label })).getByRole('button', { name: copy.week.next }))
+    // Off today's week, "Hoy" is back beside "Ir a fecha".
+    expect(within(week).getByRole('button', { name: copy.days.today })).toBeInTheDocument()
+    await userEvent.click(within(screen.getByRole('group', { name: copy.week.label })).getByRole('button', { name: copy.week.next }))
     // Back on today's week, today is no day in the URL.
     expect(router.state.location.search).toEqual({})
   })

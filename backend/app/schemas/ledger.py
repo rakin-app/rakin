@@ -978,6 +978,9 @@ class LedgerBook(BaseModel):
     # The month's freeze lines, newest first, for `all` and `kids`; none for `pending`
     # and `overdue`, which are about money owed. Not paged: a handful a month.
     freezes: list[BookFreeze]
+    # Whether anyone in the gym has a guardian: the book offers the `kids` filter, "Con
+    # apoderado", only then (#567).
+    has_dependents: bool
 
 
 class OverduePeriod(BaseModel):

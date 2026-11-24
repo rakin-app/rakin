@@ -6,10 +6,9 @@ import { useGymTimeZone } from '../api/sessions'
 import { isoDay, shortDay } from '../format'
 import { t } from '../i18n/es'
 import { BarError, BarList, BarNote } from './BarList'
-import { Button } from './Button'
 import { Card, PlainList, Section, SectionHeader } from './Card'
 import { SegmentedControl } from './Chip'
-import { ChevronLeftIcon, ChevronRightIcon } from './icons'
+import { PeriodStepper } from './PeriodStepper'
 import './TagHours.css'
 import { Loading } from './Loading'
 
@@ -75,17 +74,16 @@ export function TagHoursCard<Key extends QueryKey>({
   )
   const body = (
     <>
-      <div className="tag-hours__stretch">
-        <Button variant="ghost" icon aria-label={copy.previous(what)} onClick={() => step(-1)}>
-          <ChevronLeftIcon />
-        </Button>
-        <span className="tag-hours__stretch-label" aria-live="polite">
-          {copy.stretch(stretch.year, stretch.month)}
-        </span>
-        <Button variant="ghost" icon aria-label={copy.next(what)} onClick={() => step(1)}>
-          <ChevronRightIcon />
-        </Button>
-      </div>
+      <PeriodStepper
+        className="tag-hours__stretch"
+        label={what}
+        previous={copy.previous(what)}
+        next={copy.next(what)}
+        onPrevious={() => step(-1)}
+        onNext={() => step(1)}
+      >
+        {copy.stretch(stretch.year, stretch.month)}
+      </PeriodStepper>
       {hours.isError ? (
         <BarError>{copy.error}</BarError>
       ) : hours.data ? (

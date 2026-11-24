@@ -470,6 +470,23 @@ describe('Hoy', () => {
     )
   })
 
+  it('puts "Por validar" and "Vencidos" before "Requisitos" on the owner\'s Hoy (#567)', async () => {
+    const due = Array.from({ length: 6 }, (_, i) => ({
+      person_id: `p-${i}`,
+      name: `Persona ${i}`,
+      requirements: [{ id: 'r1', name: 'Certificado médico', state: 'pending' as const, expires_on: null }],
+    }))
+    stubApi({ due })
+    renderToday()
+
+    const requirements = await section(copy.requirements.title)
+    const proofs = await section(copy.proofs.title)
+    const overdue = await section(copy.overdue.title)
+    const follows = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(follows(proofs, overdue)).toBe(true)
+    expect(follows(overdue, requirements)).toBe(true)
+  })
+
   it('shows five short on a requirement until asked for all', async () => {
     const due = Array.from({ length: 7 }, (_, i) => ({
       person_id: `p-${i}`,

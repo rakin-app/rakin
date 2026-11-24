@@ -110,6 +110,7 @@ const BOOK: LedgerBook = {
   items: ENTRIES,
   total: ENTRIES.length,
   freezes: [],
+  has_dependents: true,
 }
 
 const SOFIA_FROZEN: BookFreeze = {
@@ -561,17 +562,88 @@ describe('Pagos', () => {
     expect(emailed).toEqual(['/api/reminders/p-late/email'])
   })
 
-  it('shows another month from the period selector', async () => {
+  it('steps to another month of the book with the month stepper (#567)', async () => {
     const asked = stubApi({ book: (params) => ({ ...BOOK, month: params.get('month') ?? BOOK.month }) })
     renderAt('/admin/pagos')
     await table()
 
-    const select = screen.getByLabelText(copy.month)
-    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['Noviembre 2026', 'Octubre 2026'])
-    await userEvent.selectOptions(select, '2026-10-01')
+    const stepper = screen.getByRole('group', { name: copy.month })
+    expect(within(stepper).getByText('Noviembre 2026')).toBeInTheDocument()
+    // November is the newest month: nothing after it.
+    expect(within(stepper).getByRole('button', { name: copy.next })).toBeDisabled()
+    await userEvent.click(within(stepper).getByRole('button', { name: copy.previous }))
 
     await waitFor(() => expect(asked.at(-1)?.get('month')).toBe('2026-10-01'))
     expect(await screen.findByText(copy.showing(5, 5, 'octubre'))).toBeInTheDocument()
+    expect(within(stepper).getByText('Octubre 2026')).toBeInTheDocument()
+    // October is the oldest month with entries.
+    expect(within(stepper).getByRole('button', { name: copy.previous })).toBeDisabled()
+    expect(within(stepper).getByRole('button', { name: copy.next })).toBeEnabled()
+  })
+
+  it('offers "Con apoderado" only when the gym has dependents, and never "Kids" (#567)', async () => {
+    stubApi({ book: () => ({ ...BOOK, has_dependents: false }) })
+    renderAt('/admin/pagos')
+    await table()
+
+    const chips = screen.getByRole('group', { name: copy.filtersLabel })
+    expect(within(chips).getAllByRole('button').map((chip) => chip.textContent)).toEqual([
+      copy.filters.all,
+      copy.filters.pending,
+      copy.filters.overdue,
+    ])
+    expect(screen.queryByText(/kids/i)).not.toBeInTheDocument()
+  })
+
+  it('offers "Con apoderado" to a gym with dependents, and filters by it', async () => {
+    const asked = stubApi()
+    renderAt('/admin/pagos')
+    await table()
+
+    const chips = screen.getByRole('group', { name: copy.filtersLabel })
+    await userEvent.click(within(chips).getByRole('button', { name: 'Con apoderado' }))
+
+    await waitFor(() => expect(asked.at(-1)?.get('filter')).toBe('kids'))
+  })
+
+  it('shows an empty gym one empty state pointing to Alumnos, and no $0 tiles (#567)', async () => {
+    const empty: LedgerBook = {
+      ...BOOK,
+      months: ['2026-11-01'],
+      items: [],
+      total: 0,
+      has_dependents: false,
+      kpis: {
+        ...BOOK.kpis,
+        collected_clp: 0,
+        collected_payments: 0,
+        pending_clp: 0,
+        pending_payments: 0,
+        overdue_clp: 0,
+        overdue_members: 0,
+        overdue_avg_days: 0,
+        expected_clp: 0,
+        active_memberships: 0,
+        frozen_memberships: 0,
+      },
+    }
+    stubApi({ book: () => empty, people: () => ({ items: [], total: 0 }), pending: 0 })
+    renderAt('/admin/pagos')
+
+    expect(await screen.findByText(copy.noMembers.text)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: copy.noMembers.manual })).toHaveAttribute('href', '/admin/alumnos/nuevo')
+    expect(screen.getByRole('link', { name: copy.noMembers.import })).toHaveAttribute('href', '/admin/alumnos/importar')
+    expect(screen.queryByRole('region', { name: copy.kpisLabel })).not.toBeInTheDocument()
+    expect(screen.queryByText('$0')).not.toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('keeps the book of a gym whose members have all left', async () => {
+    stubApi({ people: () => ({ items: [], total: 0 }) })
+    renderAt('/admin/pagos')
+
+    expect(await screen.findByRole('region', { name: copy.kpisLabel })).toBeInTheDocument()
+    expect(screen.queryByText(copy.noMembers.text)).not.toBeInTheDocument()
   })
 
   it('exports the month shown as CSV and Excel for the accountant', async () => {
@@ -589,7 +661,7 @@ describe('Pagos', () => {
     expect(expenses()).toHaveAttribute('href', '/api/ledger/export/expenses?month=2026-11-01')
     expect(expenses()).toHaveAttribute('download')
 
-    await userEvent.selectOptions(screen.getByLabelText(copy.month), '2026-10-01')
+    await userEvent.click(within(screen.getByRole('group', { name: copy.month })).getByRole('button', { name: copy.previous }))
     await waitFor(() => expect(csv()).toHaveAttribute('href', '/api/ledger/export?month=2026-10-01&format=csv'))
     expect(expenses()).toHaveAttribute('href', '/api/ledger/export/expenses?month=2026-10-01')
   })
@@ -692,7 +764,7 @@ describe('Pagos', () => {
     ])
   })
 
-  it('draws the period picker before the book answers, so the header does not move (#357)', async () => {
+  it('draws the month stepper before the book answers, so the header does not move (#357)', async () => {
     let answer: () => void = () => {}
     const held = new Promise<void>((resolve) => {
       answer = resolve
@@ -708,13 +780,13 @@ describe('Pagos', () => {
     )
     renderAt('/admin/pagos?month=2026-11-01')
 
-    const select = await screen.findByLabelText(copy.month)
-    expect(select).toBeDisabled()
-    expect(select).toHaveValue('2026-11-01')
+    const stepper = await screen.findByRole('group', { name: copy.month })
+    expect(within(stepper).getByText('Noviembre 2026')).toBeInTheDocument()
+    expect(within(stepper).getByRole('button', { name: copy.previous })).toBeDisabled()
     answer()
     await table()
-    expect(screen.getByLabelText(copy.month)).toBe(select)
-    expect(select).toBeEnabled()
+    expect(screen.getByRole('group', { name: copy.month })).toBe(stepper)
+    expect(within(stepper).getByRole('button', { name: copy.previous })).toBeEnabled()
   })
 
   it('makes recording a payment the primary action when no proof waits', async () => {
