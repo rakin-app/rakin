@@ -267,6 +267,70 @@
   font-size: var(--text-sm);
 }
 
+/* "Siguiente": the next step to do, beside its title (#573). */
+.today__step-next {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-bold);
+  vertical-align: middle;
+}
+
+.today__step-optional {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-regular);
+}
+
+.today__step--next .today__step-links {
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.today__setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-divider);
+}
+
+@media not (--desktop) {
+  /* A done step folds to a row on a phone: its tick, its title and its first link, so
+   * the next step to do is in the first screen. Its done line stays for a screen reader. */
+  .today__step--done {
+    align-items: center;
+    padding: var(--space-2) 0;
+  }
+
+  .today__step--done .today__row-text {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: var(--space-3);
+  }
+
+  .today__step--done .today__step-links {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .today__step--done .today__detail {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .today__step--done .today__step-links > :not(:first-child) {
+    display: none;
+  }
+}
+
 @media (--desktop) {
   /* A step's links beside its text on a desktop, not under it. */
   .today__step {

@@ -41,7 +41,9 @@ describe("a gym's words", () => {
     expect(es.admin.students.newLink).toBe('Nuevo socio')
     expect(es.admin.newMember.title).toBe('Nuevo socio')
     expect(es.admin.today.setup.title).toBe('Configura tu club')
-    expect(es.admin.today.setup.steps.staff.hint).toBe('Admins y entrenadores, cada uno con su acceso.')
+    expect(es.admin.today.setup.steps.staff.hint).toBe(
+      'Tus entrenadores y admins. Puedes ponerlos en el horario antes de que entren. Si enseñas solo, sáltate este paso.',
+    )
     expect(es.admin.students.count(3)).toBe('3 socios')
     expect(es.admin.member.since('mar 2024')).toBe('Socio desde mar 2024')
     // The join form's words.
@@ -55,7 +57,7 @@ describe("a gym's words", () => {
     wearVocabulary({ place: 'escuela', members: 'deportistas', coach: 'sensei' })
 
     expect(es.admin.today.setup.title).toBe('Configura tu escuela')
-    expect(es.admin.today.setup.steps.gym.title).toBe('Datos de la escuela y cuenta bancaria')
+    expect(es.admin.today.setup.steps.activities.doneLine).toBe('Listo. Revisa las palabras en Ajustes › Escuela si no te calzan.')
     expect(es.join.invalid).toBe('Este link ya no es válido. Pídele uno nuevo a la escuela.')
     expect(es.privacy.missing).toBe('Esta escuela todavía no publica su política de privacidad.')
     expect(es.matTime.emptyMine).toContain('cuando tu sensei use el cronómetro')
