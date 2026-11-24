@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import { holdsAccount, managesGym, type Access } from '../api/me'
 import type { Person } from '../api/member'
 import {
@@ -16,6 +16,7 @@ import { useGymToday } from '../api/sessions'
 import { Button } from '../components/Button'
 import { useLeaveTo } from '../components/BackLink'
 import { Input } from '../components/Field'
+import { useFocusOnOpen, useRefusal } from '../components/focusInvalid'
 import { t } from '../i18n/es'
 import { LeftReasonField } from './LeftReason'
 import { HISTORY_WINDOW_YEARS, yearsBefore } from './historyWindow'
@@ -119,20 +120,14 @@ function LeaveForm({
 }: {
   person: Person
   // Opened from Eliminar's alert (#581): its "Cancelar" and "Dar de baja" sit where the
-  // alert's did, so it looks as if nothing happened. Brought into view, its first field
-  // focused, so it is seen to open.
+  // alert's did, so it looks as if nothing happened. Brought to the top of the view, so
+  // it is seen to open. Opened either way, its first field is focused (#569).
   reveal?: boolean
   onCancel: () => void
   onDone: (message: string | null) => void
 }) {
   const form = copy.leaveForm
-  const formRef = useRef<HTMLFormElement>(null)
-  const dayRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (!reveal) return
-    formRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
-    dayRef.current?.focus({ preventScroll: true })
-  }, [reveal])
+  const formRef = useFocusOnOpen<HTMLFormElement>(reveal ? 'start' : 'nearest')
   const today = useGymToday()
   const refresh = useRefresh()
   const id = useId()
@@ -141,6 +136,7 @@ function LeaveForm({
   const on = picked ?? today
   const [reason, setReason] = useState('')
   const [checked, setChecked] = useState(false)
+  const refuse = useRefusal(formRef)
   // As far back as history goes (#294), not a plan's five years.
   const earliest = today ? yearsBefore(today, HISTORY_WINDOW_YEARS) : ''
   const onOk = on !== '' && on <= today && on >= earliest
@@ -161,6 +157,7 @@ function LeaveForm({
     event.preventDefault()
     setChecked(true)
     if (onOk) leave.mutate()
+    else refuse()
   }
 
   return (
@@ -170,17 +167,17 @@ function LeaveForm({
         {form.on}
       </label>
       <Input
-        ref={dayRef}
         id={id}
         type="date"
         min={earliest || undefined}
         max={today}
         value={on}
         aria-invalid={checked && !onOk}
+        aria-describedby={checked && !onOk ? `${id}-error` : undefined}
         onChange={(e) => setPicked(e.target.value)}
       />
       {checked && !onOk && (
-        <Banner tone="error">
+        <Banner tone="error" id={`${id}-error`}>
           {form.onNeeded}
         </Banner>
       )}

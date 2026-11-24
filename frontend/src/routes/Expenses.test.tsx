@@ -239,6 +239,9 @@ describe('Gastos', () => {
     await user.click(form.getByRole('button', { name: copy.form.save }))
     expect(form.getByText(copy.form.amountNeeded)).toBeInTheDocument()
     expect(form.getByText(copy.form.categoryNeeded)).toBeInTheDocument()
+    // The first refused field takes focus, its error read with it (#569).
+    expect(form.getByLabelText(copy.form.amount)).toHaveFocus()
+    expect(form.getByLabelText(copy.form.amount)).toHaveAccessibleDescription(copy.form.amountNeeded)
 
     await user.type(form.getByLabelText(copy.form.amount), '32990')
     expect(form.getByLabelText(copy.form.amount)).toHaveValue('32.990')
@@ -342,6 +345,8 @@ describe('Gastos', () => {
     const voiding = within(within(rent!).getByRole('form', { name: copy.voidForm.title('Arriendo · $650.000') }))
     await user.click(voiding.getByRole('button', { name: copy.voidForm.submit }))
     expect(voiding.getByText(copy.voidForm.reasonNeeded)).toBeInTheDocument()
+    expect(voiding.getByLabelText(copy.voidForm.reason)).toHaveFocus()
+    expect(voiding.getByLabelText(copy.voidForm.reason)).toHaveAccessibleDescription(copy.voidForm.reasonNeeded)
     await user.type(voiding.getByLabelText(copy.voidForm.reason), 'era del mes pasado')
     await user.click(voiding.getByRole('button', { name: copy.voidForm.submit }))
     expect(await screen.findByText(copy.voidForm.done)).toBeInTheDocument()

@@ -19,7 +19,7 @@ import { Banner, cardClass, CheckRow, Section, SectionTitle } from '../component
 import { Disclosure } from '../components/Disclosure'
 import { Field, Input } from '../components/Field'
 import { PageContainer } from '../components/Layout'
-import { useFocusFirstInvalid } from '../components/focusInvalid'
+import { useFocusFirstInvalid, useRefusal } from '../components/focusInvalid'
 import { Loading } from '../components/Loading'
 import { PageHeader } from '../components/PageHeader'
 import { formatRut } from '../format'
@@ -184,6 +184,8 @@ function AcceptanceForm({ page }: { page: TermsPage }) {
     },
   })
   useFocusFirstInvalid(formRef, accept.error)
+  // Its own check too (#569): a blank field focused, not "Aceptar y empezar" at the foot.
+  const refuse = useRefusal(formRef)
 
   const problems = problemsOf(drafts)
   const valid = Object.keys(problems).length === 0
@@ -203,7 +205,7 @@ function AcceptanceForm({ page }: { page: TermsPage }) {
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setTried(true)
-    if (!valid || !both) return
+    if (!valid || !both) return refuse()
     setChanged(false)
     accept.mutate({
       service_version: service.version,

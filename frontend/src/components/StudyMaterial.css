@@ -106,6 +106,8 @@
 
 .my-material__toggle {
   display: flex;
+  align-items: center;
+  gap: var(--space-2);
   min-height: var(--control-height);
   padding: 0;
   background: none;
@@ -115,6 +117,24 @@
   min-width: 0;
   text-align: left;
   cursor: pointer;
+}
+
+/* That it opens, as a Libro line's chevron says (#569); turned down when it is. */
+.my-material__chevron {
+  display: flex;
+  flex: none;
+  color: var(--color-text-subtle);
+  transition: rotate var(--duration-fast) var(--ease-out);
+}
+
+.my-material__toggle[aria-expanded='true'] .my-material__chevron {
+  rotate: 90deg;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .my-material__chevron {
+    transition: none;
+  }
 }
 
 .my-material__content {

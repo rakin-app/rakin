@@ -3378,7 +3378,7 @@ export const es = {
         newTitle: 'Nuevo material',
         editTitle: 'Editar material',
         title: 'Título',
-        titlePlaceholder: 'Ej.: Pasaje de guardia',
+        titlePlaceholder: 'Ej.: Repaso de la semana',
         titleMissing: 'Escribe un título.',
         body: 'Texto',
         bodyHint: 'Opcional. Texto simple; los saltos de línea se mantienen.',

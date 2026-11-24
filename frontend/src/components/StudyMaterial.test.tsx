@@ -125,6 +125,28 @@ describe('StudyMaterial', () => {
     expect(await within(section()).findByText(copy.shared)).toBeInTheDocument()
   })
 
+  it('opens its form with focus in it, and a refused save focuses what is missing, read with its error (#569)', async () => {
+    stub([])
+    show({ kind: 'session', id: 's-1' }, true)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: copy.add }))
+    const title = screen.getByLabelText(copy.form.title)
+    expect(title).toHaveFocus()
+    expect(title).toHaveAttribute('placeholder', 'Ej.: Repaso de la semana')
+
+    await user.click(screen.getByRole('button', { name: copy.form.submit }))
+    expect(title).toHaveFocus()
+    expect(title).toHaveAccessibleDescription(copy.form.titleMissing)
+
+    // With a title, the audience is the first thing missing.
+    await user.type(title, 'Repaso')
+    await user.click(screen.getByRole('button', { name: copy.form.submit }))
+    const first = screen.getByRole('radio', { name: new RegExp(copy.audience.attendees) })
+    expect(first).toHaveFocus()
+    expect(first).toHaveAccessibleDescription(copy.form.audienceMissing)
+  })
+
   it('refuses a link that is not https before sending', async () => {
     const sent = stub([])
     show({ kind: 'session', id: 's-1' }, true)

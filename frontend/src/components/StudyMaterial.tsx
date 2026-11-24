@@ -23,6 +23,7 @@ import { t } from '../i18n/es'
 import { Button } from './Button'
 import { Banner, Card, CheckRow, PlainList, Section } from './Card'
 import { Field, FieldError, Input, Textarea } from './Field'
+import { useFocusOnOpen, useRefusal } from './focusInvalid'
 import { Loading } from './Loading'
 import './StudyMaterial.css'
 
@@ -251,6 +252,12 @@ function MaterialForm({
   const firstDay = material?.starts_on ?? (host.kind === 'slot' ? today : (recurring?.slotDate ?? today))
   const [from, setFrom] = useState(firstDay)
   const [tried, setTried] = useState(false)
+  // Opened 4,000px down a class's roster, maybe: focus lands in it (#569), and a refused
+  // save focuses its first missing answer.
+  const formRef = useFocusOnOpen<HTMLFormElement>()
+  const refuse = useRefusal(formRef)
+  const audienceError = useId()
+  const plansErrorId = useId()
 
   const links = linksOf(linkText)
   const badLinks = links.filter((link) => !isHttpsLink(link)).length
@@ -283,14 +290,14 @@ function MaterialForm({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setTried(true)
-    if (title.trim() === '' || audience === null || linkError || plansError || (dated && from === '')) return
+    if (title.trim() === '' || audience === null || linkError || plansError || (dated && from === '')) return refuse()
     save.mutate()
   }
   const togglePlan = (id: string) =>
     setPlanIds((ids) => (ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id]))
 
   return (
-    <form className="material__form" aria-label={material ? words.editTitle : words.newTitle} onSubmit={submit} noValidate>
+    <form ref={formRef} className="material__form" aria-label={material ? words.editTitle : words.newTitle} onSubmit={submit} noValidate>
       <Field label={words.title} error={tried && title.trim() === '' ? words.titleMissing : undefined}>
         {(props) => (
           <Input
@@ -331,6 +338,8 @@ function MaterialForm({
               name={audienceName}
               value={option}
               checked={audience === option}
+              aria-invalid={tried && audience === null}
+              aria-describedby={tried && audience === null ? audienceError : undefined}
               onChange={() => setAudience(option)}
             />
             <span className="material__choice">
@@ -339,18 +348,24 @@ function MaterialForm({
             </span>
           </CheckRow>
         ))}
-        {tried && audience === null && <FieldError>{words.audienceMissing}</FieldError>}
+        {tried && audience === null && <FieldError id={audienceError}>{words.audienceMissing}</FieldError>}
       </fieldset>
       {audience === 'plans' && (
         <fieldset className="material__fieldset">
           <legend className="field__label">{words.plans}</legend>
           {pickable.map((plan) => (
             <CheckRow key={plan.id}>
-              <input type="checkbox" checked={planIds.includes(plan.id)} onChange={() => togglePlan(plan.id)} />
+              <input
+                type="checkbox"
+                checked={planIds.includes(plan.id)}
+                aria-invalid={tried && plansError !== null}
+                aria-describedby={tried && plansError ? plansErrorId : undefined}
+                onChange={() => togglePlan(plan.id)}
+              />
               <span>{plan.name}</span>
             </CheckRow>
           ))}
-          {tried && plansError && <FieldError>{plansError}</FieldError>}
+          {tried && plansError && <FieldError id={plansErrorId}>{plansError}</FieldError>}
         </fieldset>
       )}
       {!material && host.kind === 'session' && recurring && (

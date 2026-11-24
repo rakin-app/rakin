@@ -195,6 +195,28 @@ describe('the terms gate (#499)', () => {
     expect(calls.some((c) => c.path === '/api/terms/accept')).toBe(false)
   })
 
+  it('focuses the first blank field its own check refuses, not the button at the foot (#569)', async () => {
+    const calls = stubApi((call) => {
+      if (call.path === '/api/me/role') return { status: 200, body: me('owner', 'pending') }
+      if (call.path === '/api/terms') return { status: 200, body: PAGE }
+      return undefined
+    })
+    renderAt('/admin')
+
+    const legalName = await screen.findByLabelText(copy.legalName)
+    for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box)
+    const accept = screen.getByRole('button', { name: copy.accept })
+    await userEvent.click(accept)
+    expect(legalName).toHaveFocus()
+    expect(legalName).toHaveAccessibleDescription(expect.stringContaining(copy.required))
+
+    // Once it is typed, the next blank one, on the next attempt.
+    await userEvent.type(legalName, 'Norte SpA')
+    await userEvent.click(accept)
+    expect(screen.getByLabelText(copy.rut)).toHaveFocus()
+    expect(calls.some((c) => c.path === '/api/terms/accept')).toBe(false)
+  })
+
   it('reloads the texts when they changed while the titular read them', async () => {
     const calls = stubApi((call) => {
       if (call.path === '/api/me/role') return { status: 200, body: me('owner', 'pending') }
